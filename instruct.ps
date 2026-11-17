@@ -1,0 +1,5 @@
+$services = @("wuauserv", "bits", "dosvc", "UsoSvc", "WaaSMedicSvc")
+foreach ($s in $services) {
+    Stop-Service -Name $s -Force -ErrorAction SilentlyContinue
+    Set-Service -Name $s -StartupType Disabled -ErrorAction SilentlyContinue
+}
