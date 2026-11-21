@@ -1,113 +1,127 @@
 <#
 .SYNOPSIS
-    Dumps the decrypted .byfron section from a running Roblox process.
+    Deep static PE analysis of RobloxPlayerBeta.exe
 #>
 
-# --- P/Invoke Definitions ---
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
+param (
+    [string]$ExePath = "C:\Users\$env:USERNAME\AppData\Local\Roblox\Versions\version-2c6fd5e09aaf4cfa\RobloxPlayerBeta.exe"
+)
 
-public class MemDumper {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+if (-not (Test-Path $ExePath)) {
+    Write-Host "[X] File not found at $ExePath. Please verify the path." -ForegroundColor Red
+    exit
+}
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, uint dwSize, out IntPtr lpNumberOfBytesRead);
+Write-Host "[*] Reading $ExePath..." -ForegroundColor Cyan
+$bytes = [System.IO.File]::ReadAllBytes($ExePath)
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool CloseHandle(IntPtr hObject);
+# 1. Parse DOS Header
+if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+    Write-Host "[X] Invalid DOS Header (Not MZ)." -ForegroundColor Red
+    exit
+}
 
-    public const uint PROCESS_VM_READ = 0x0010;
-    public const uint PROCESS_QUERY_INFORMATION = 0x0400;
+$peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset+1] -ne 0x45) {
+    Write-Host "[X] Invalid NT Header (Not PE)." -ForegroundColor Red
+    exit
+}
 
-    public static byte[] ReadMemory(IntPtr hProcess, IntPtr address, int size) {
-        byte[] buffer = new byte[size];
-        IntPtr bytesRead;
-        if (ReadProcessMemory(hProcess, address, buffer, (uint)size, out bytesRead)) {
-            return buffer;
+# 2. Parse File Header
+$numSections = [BitConverter]::ToUInt16($bytes, $peOffset + 6)
+$optHeaderSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
+
+# 3. Parse Sections
+$sectionsStart = $peOffset + 24 + $optHeaderSize
+
+Write-Host "`n[+] PE Sections Found:" -ForegroundColor Green
+Write-Host ("{0,-10} {1,-12} {2,-12} {3,-12}" -f "Name", "VirtualAddr", "RawSize", "RawPtr")
+Write-Host ("-" * 50)
+
+$targetSection = $null
+$sections = @()
+
+for ($i = 0; $i -lt $numSections; $i++) {
+    $offset = $sectionsStart + ($i * 40)
+    $name = [System.Text.Encoding]::ASCII.GetString($bytes, $offset, 8).TrimEnd([char]0)
+    $vSize = [BitConverter]::ToUInt32($bytes, $offset + 8)
+    $vAddr = [BitConverter]::ToUInt32($bytes, $offset + 12)
+    $rawSize = [BitConverter]::ToUInt32($bytes, $offset + 16)
+    $rawPtr = [BitConverter]::ToUInt32($bytes, $offset + 20)
+    
+    Write-Host ("{0,-10} 0x{1:X8}   0x{2:X8}   0x{3:X8}" -f $name, $vAddr, $rawSize, $rawPtr)
+    
+    if ($name -eq ".byfron" -or $name -eq "tempest") {
+        $targetSection = @{
+            Name = $name
+            RawPtr = $rawPtr
+            RawSize = $rawSize
         }
-        return null;
     }
 }
-"@
 
-Write-Host "[*] Searching for RobloxPlayerBeta.exe..." -ForegroundColor Cyan
-$proc = Get-Process -Name "RobloxPlayerBeta" -ErrorAction SilentlyContinue
-if (-not $proc) {
-    Write-Host "[X] RobloxPlayerBeta.exe is not running!" -ForegroundColor Red
+if (-not $targetSection) {
+    Write-Host "`n[X] Could not find .byfron or tempest section." -ForegroundColor Red
     exit
 }
 
-$pidToAttach = $proc.Id
-Write-Host "[+] Found process PID: $pidToAttach" -ForegroundColor Green
+# 4. Extract and Analyze .byfron
+Write-Host "`n[*] Extracting $($targetSection.Name) section..." -ForegroundColor Cyan
+$byfronBytes = New-Object byte[] $targetSection.RawSize
+[Array]::Copy($bytes, $targetSection.RawPtr, $byfronBytes, 0, $targetSection.RawSize)
 
-# Get Base Address of the main module
-$baseAddress = $proc.MainModule.BaseAddress
-Write-Host "[+] Base Address: 0x$($baseAddress.ToString('X'))" -ForegroundColor Green
-
-# Open the process with read access
-Write-Host "[*] Attaching to process memory..." -ForegroundColor Cyan
-$hProcess = [MemDumper]::OpenProcess([MemDumper]::PROCESS_VM_READ -bor [MemDumper]::PROCESS_QUERY_INFORMATION, $false, $pidToAttach)
-
-if ($hProcess -eq [IntPtr]::Zero) {
-    Write-Host "[X] Failed to open process. Hyperion blocked the handle. (Error: $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))" -ForegroundColor Red
-    exit
+# Calculate Entropy (Shannon Entropy)
+$frequencies = New-Object int[] 256
+foreach ($b in $byfronBytes) { $frequencies[$b]++ }
+$entropy = 0.0
+foreach ($freq in $frequencies) {
+    if ($freq -gt 0) {
+        $p = $freq / $byfronBytes.Length
+        $entropy -= $p * [Math]::Log($p, 2)
+    }
 }
-Write-Host "[+] Process handle acquired." -ForegroundColor Green
 
-try {
-    # 1. Read DOS Header to get PE Header offset (e_lfanew)
-    $dosHeader = [MemDumper]::ReadMemory($hProcess, $baseAddress, 0x40)
-    if (-not $dosHeader) { throw "Failed to read DOS header." }
-    $e_lfanew = [BitConverter]::ToInt32($dosHeader, 0x3C)
+Write-Host "`n[+] Section Analysis for '$($targetSection.Name)':" -ForegroundColor Green
+Write-Host "    Size: $($targetSection.RawSize) bytes"
+Write-Host "    Shannon Entropy: $([Math]::Round($entropy, 4)) / 8.0"
+if ($entropy -gt 7.5) {
+    Write-Host "    [!] High entropy detected. This section is heavily encrypted or compressed." -ForegroundColor Yellow
+    Write-Host "    [!] On-disk patching is mathematically impossible without the decryption key." -ForegroundColor Yellow
+}
 
-    # 2. Read NT Headers (File Header + Optional Header)
-    $ntHeaders = [MemDumper]::ReadMemory($hProcess, [IntPtr]($baseAddress.ToInt64() + $e_lfanew), 0x108)
-    if (-not $ntHeaders) { throw "Failed to read NT headers." }
+# 5. Search for known Byte Patterns (Signatures)
+Write-Host "`n[*] Searching for known anti-VM signatures in encrypted payload..." -ForegroundColor Cyan
+
+# Hex signatures for CPUID (0x0F 0xA2), RDTSC (0x0F 0x31)
+# Even if encrypted, sometimes the compiler leaves the instructions unencrypted in small stubs.
+$signatures = @{
+    "CPUID (0F A2)" = @(0x0F, 0xA2)
+    "RDTSC (0F 31)" = @(0x0F, 0x31)
+    "HLT (F4)" = @(0xF4)
+}
+
+foreach ($sigName in $signatures.Keys) {
+    $sig = $signatures[$sigName]
+    $found = $false
     
-    $numSections = [BitConverter]::ToUInt16($ntHeaders, 0x06)
-    $optHeaderSize = [BitConverter]::ToUInt16($ntHeaders, 0x14)
-
-    # 3. Read Section Headers
-    $sectionStartOffset = $e_lfanew + 0x18 + $optHeaderSize
-    $sectionsRaw = [MemDumper]::ReadMemory($hProcess, [IntPtr]($baseAddress.ToInt64() + $sectionStartOffset), $numSections * 40)
-    
-    $byfronFound = $false
-    for ($i = 0; $i -lt $numSections; $i++) {
-        $offset = $i * 40
-        $secName = [System.Text.Encoding]::ASCII.GetString($sectionsRaw, $offset, 8).TrimEnd([char]0)
-        
-        if ($secName -eq ".byfron" -or $secName -eq "tempest") {
-            $virtualSize = [BitConverter]::ToUInt32($sectionsRaw, $offset + 8)
-            $virtualAddress = [BitConverter]::ToUInt32($sectionsRaw, $offset + 12)
-            $absoluteAddr = [IntPtr]($baseAddress.ToInt64() + $virtualAddress)
-            
-            Write-Host "[+] Found target section: $secName" -ForegroundColor Yellow
-            Write-Host "    Virtual Size: $virtualSize bytes" -ForegroundColor Gray
-            Write-Host "    Memory Addr: 0x$($absoluteAddr.ToString('X'))" -ForegroundColor Gray
-            
-            Write-Host "[*] Dumping memory (this may take a second)..." -ForegroundColor Cyan
-            $dumpBytes = [MemDumper]::ReadMemory($hProcess, $absoluteAddr, $virtualSize)
-            
-            if ($dumpBytes) {
-                $outFile = "C:\byfron_dump_$secName.bin"
-                [System.IO.File]::WriteAllBytes($outFile, $dumpBytes)
-                Write-Host "[+] SUCCESS! Dumped $($dumpBytes.Length) bytes to $outFile" -ForegroundColor Green
-                $byfronFound = $true
-            } else {
-                Write-Host "[X] ReadProcessMemory failed on $secName. Hyperion protected the pages." -ForegroundColor Red
+    for ($i = 0; $i -le ($byfronBytes.Length - $sig.Length); $i++) {
+        $match = $true
+        for ($j = 0; $j -lt $sig.Length; $j++) {
+            if ($byfronBytes[$i + $j] -ne $sig[$j]) {
+                $match = $false
+                break
             }
         }
+        if ($match) {
+            Write-Host "    [+] Found $sigName at offset 0x$($i.ToString('X'))" -ForegroundColor Magenta
+            $found = $true
+            # Break after finding one to avoid spamming thousands of hits
+            break
+        }
     }
-
-    if (-not $byfronFound) {
-        Write-Host "[X] Could not locate .byfron or tempest sections in memory." -ForegroundColor Red
+    if (-not $found) {
+        Write-Host "    [-] Did not find $sigName in clear text." -ForegroundColor Gray
     }
-
-} catch {
-    Write-Host "[X] Error: $_" -ForegroundColor Red
-} finally {
-    [MemDumper]::CloseHandle($hProcess)
-    Write-Host "[*] Handle closed." -ForegroundColor Cyan
 }
+
+Write-Host "`n[*] Analysis complete." -ForegroundColor Cyan
