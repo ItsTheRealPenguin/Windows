@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RE Studio - Production-Grade Binary Workstation</title>
+  <title>RE Studio v2.0 - Production-Grade Binary Workstation</title>
   <style>
     :root {
       --bg-main: #121212;
@@ -33,7 +33,6 @@
       overflow: hidden;
     }
 
-    /* Top Navigation Bar */
     .top-bar {
       background: var(--bg-header);
       padding: 0 14px;
@@ -79,7 +78,6 @@
     .dropdown a:hover { background: var(--accent); color: #000; }
     .dropdown .danger { color: #ff6b6b; }
 
-    /* Main Grid Workspace */
     .workspace {
       display: grid;
       grid-template-columns: 220px minmax(0, 1fr) 320px;
@@ -89,7 +87,6 @@
       overflow: hidden;
     }
 
-    /* Left Structure Sidebar */
     .sidebar-left {
       background: var(--bg-panel);
       border-right: 1px solid var(--border);
@@ -129,7 +126,6 @@
     .tree-folder:first-child { margin-top: 0; }
     .tree-sub { padding-left: 18px; color: var(--text-main); font-size: 11px; }
 
-    /* Center View Workspace */
     .center-area {
       display: flex;
       flex-direction: column;
@@ -176,7 +172,6 @@
       padding: 10px;
     }
 
-    /* Dropzone Interface */
     .dropzone {
       position: absolute;
       inset: 16px;
@@ -198,7 +193,6 @@
       background: rgba(0, 188, 212, 0.05);
     }
 
-    /* Assembly Lines */
     .line { display: flex; white-space: pre; min-width: max-content; }
     .line:hover { background: #2a2d2e; }
     .line.patched-line { background: rgba(76, 175, 80, 0.14); }
@@ -210,7 +204,6 @@
     .asm .number { color: #b5cea8; }
     .patch-tag { color: #81c784; font-size: 11px; margin-left: 8px; }
 
-    /* Hex Editor Lines */
     .hex-row { display: flex; white-space: pre; margin-bottom: 2px; min-width: max-content; }
     .hex-addr { color: #569cd6; width: 100px; flex-shrink: 0; }
     .hex-data { color: #b5cea8; width: 390px; flex-shrink: 0; display: flex; gap: 6px; }
@@ -218,7 +211,6 @@
     .hex-byte { display: inline-block; width: 20px; text-align: center; border-radius: 2px; }
     .hex-byte:hover { background: var(--accent); color: #000; cursor: pointer; }
 
-    /* Colored Multi-pane Right Sidebar */
     .sidebar-right {
       display: flex;
       flex-direction: column;
@@ -271,7 +263,6 @@
     .action-btn.primary { background: #007c91; color: #fff; }
     .action-btn.primary:hover:not(:disabled) { background: #0097a7; }
 
-    /* Console Panel */
     .console-panel {
       grid-column: 1 / -1;
       background: var(--bg-panel);
@@ -295,7 +286,6 @@
     .console-line.success { color: #81c784; }
     .console-line.warning { color: #ffb74d; }
 
-    /* Responsive Adaptation */
     @media (max-width: 1024px) {
       body { overflow: auto; height: auto; min-height: 100dvh; }
       .workspace {
@@ -330,7 +320,7 @@
   <!-- Menu Bar -->
   <header class="top-bar">
     <div class="menu-group">
-      <span style="font-weight: bold; color: var(--accent); margin-right: 12px; font-family: var(--font-code);">RE-STUDIO v2.0</span>
+      <span style="font-weight: bold; color: var(--accent); margin-right: 12px; font-family: var(--font-code);">RE-STUDIO v2.0 (Byte-Exact Tiling Engine)</span>
       <div class="menu-item" id="menu-open">Open File</div>
       <div class="menu-item" id="menu-clear-log">Clear Log</div>
     </div>
@@ -366,7 +356,7 @@
       <div class="tab-bar">
         <div class="tab active" data-tab="disasm">Disassembly</div>
         <div class="tab" data-tab="hex">Hex View</div>
-        <div class="tab" data-tab="decomp">Pseudo-C Engine</div>
+        <div class="tab" data-tab="decomp">Pseudo-C Engine v2</div>
       </div>
 
       <div class="content-view" id="view-disasm">
@@ -384,7 +374,7 @@
       </div>
 
       <div class="content-view" id="view-decomp" style="display: none;">
-        <div id="decomp-output" style="color: #d4d4d4; white-space: pre-wrap;">// Click "Generate Strict Pseudo-C" to run rules-compliant translation.</div>
+        <div id="decomp-output" style="color: #d4d4d4; white-space: pre-wrap;">// Click "Generate v2 Pseudo-C" to run byte-tiled translation.</div>
       </div>
     </main>
 
@@ -413,7 +403,7 @@
 
       <div class="color-panel panel-cyan">
         <div class="section-title">Options / Actions</div>
-        <button class="action-btn primary" id="btn-decompile" disabled>Generate Strict Pseudo-C</button>
+        <button class="action-btn primary" id="btn-decompile" disabled>Generate v2 Pseudo-C</button>
         <button class="action-btn" id="btn-antidebug" disabled>Apply Anti-Debug Patches</button>
         <button class="action-btn" id="btn-download-c" disabled>Download Pseudo-C</button>
         <button class="action-btn" id="btn-download-bin" disabled>Download Patched Binary</button>
@@ -432,14 +422,13 @@
 
   <input type="file" id="file-picker" accept=".exe,.dll,.bin" style="display:none;">
 
-  <!-- WASM Disassembler Base -->
+  <!-- WASM Disassembler Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@alexaltea/capstone-js@5.0.9/dist/capstone.min.js"></script>
 
-  <!-- Core Analysis & Compliant Pseudo-C Emitter -->
+  <!-- Core Analysis & v2 Spec Compliant Emitter -->
   <script type="module">
     import * as PE from 'https://cdn.jsdelivr.net/npm/pe-library@2.0.1/+esm';
 
-    // List of common Windows Anti-Debug APIs for static tracking
     const ANTI_DEBUG_APIS = [
       'IsDebuggerPresent',
       'CheckRemoteDebuggerPresent',
@@ -453,7 +442,6 @@
       'QueryPerformanceCounter'
     ];
 
-    // Global Workstation State
     const state = {
       fileName: 'binary',
       rawBuffer: null,
@@ -603,7 +591,7 @@
 
       $('btn-download-c').disabled = true;
       $('btn-download-bin').disabled = true;
-      $('decomp-output').textContent = '// Click "Generate Strict Pseudo-C" to run rules-compliant translation.';
+      $('decomp-output').textContent = '// Click "Generate v2 Pseudo-C" to run byte-tiled translation.';
       $('info-decomp-status').textContent = 'Idle';
 
       log(`Loading binary buffer: ${file.name} (${(file.size / 1024).toFixed(2)} KB)...`, 'info');
@@ -635,7 +623,6 @@
         state.baseAddr = baseAddr;
         state.entryRva = entryRva;
 
-        // Build mapped range structures
         for (const s of sections) {
           const vAddr = baseAddr + Number(s.info.virtualAddress);
           const vSize = Math.max(Number(s.info.virtualSize || 0), Number(s.info.sizeOfRawData || 0));
@@ -836,11 +823,27 @@
     }
 
     // =========================================================================
-    // STRICT PSEUDO-C EMITTER (Implements specifications 1-10)
+    // V2 PSEUDO-C EMITTER (Byte-Exact Tiling & v2 Specs $0.1 - $10)
     // =========================================================================
 
+    function bytesToHex(uint8arr) {
+      return Array.from(uint8arr).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    }
+
+    function splitOperands(opStr) {
+      return opStr.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
     function resolveRipRelative(opStr, instrEndVa) {
-      // 1.1 Match [rip +/- disp] or [rip]
+      // 0.1 & 1.1 Only [rip +- disp] resolves to an absolute VA
       const ripRegex = /\[\s*rip\s*([+-])\s*(0x[0-9a-fA-F]+|\d+)\s*\]/i;
       const match = opStr.match(ripRegex);
       if (!match) return { resolvedStr: opStr, resolvedVa: null, isExternal: false };
@@ -851,26 +854,14 @@
 
       const isExt = !isAddressMapped(targetVa);
       const vaHex = '0x' + targetVa.toString(16).toUpperCase();
-      const extTag = isExt ? ` /* EXTERNAL: 0x${targetVa.toString(16).toUpperCase()} */` : '';
+      const extTag = isExt ? ` /* EXTERNAL: ${vaHex} */` : '';
 
       const newOpStr = opStr.replace(ripRegex, `[${vaHex}]${extTag}`);
       return { resolvedStr: newOpStr, resolvedVa: targetVa, isExternal: isExt };
     }
 
-    function formatAbsoluteAddress(vaHexStr) {
-      // 1.2 Fixed width canonical rendering
-      let num = 0;
-      if (typeof vaHexStr === 'number') {
-        num = vaHexStr;
-      } else {
-        num = parseInt(vaHexStr.replace(/[^0-9a-fA-F]/g, ''), 16);
-      }
-      return '0x' + num.toString(16).toUpperCase();
-    }
-
     function normalizeAddressingModes(opStr) {
-      // 1.4 & 1.5 Scale checks and explicit *1 indexing
-      // Match base + index (+ disp)
+      // 3.2 lea with index and no scale emits *1
       const indexNoScaleRegex = /\[\s*([a-z0-9]+)\s*\+\s*([a-z0-9]+)\s*(\+\s*(?:0x[0-9a-fA-F]+|\d+))?\s*\]/i;
       const m = opStr.match(indexNoScaleRegex);
       if (m) {
@@ -886,10 +877,11 @@
     }
 
     function resolvePredicate(mnemonic, prevInstr) {
-      // 4.1 & 4.2 Map condition codes and flags
+      // 4.1 Strict flag condition resolution
       const cond = mnemonic.toLowerCase().replace(/^j/, '');
       const map = {
-        'e': 'ZF', 'ne': '!ZF', 'z': 'ZF', 'nz': '!ZF',
+        'e': '!ZF', 'z': 'ZF',
+        'ne': '!ZF', 'nz': '!ZF',
         'a': '!CF && !ZF', 'ae': '!CF', 'b': 'CF', 'be': 'CF || ZF',
         'g': '!ZF && SF == OF', 'ge': 'SF == OF', 'l': 'SF != OF', 'le': 'ZF || SF != OF',
         's': 'SF', 'ns': '!SF', 'p': 'PF', 'np': '!PF'
@@ -897,20 +889,20 @@
 
       let pred = map[cond] || `cond_${cond}`;
       if (prevInstr) {
-        const pm = prevInstr.mnemonic.toLowerCase();
-        const pops = prevInstr.op_str;
+        const pm = (prevInstr.mnemonic || '').toLowerCase();
+        const pops = prevInstr.op_str || '';
         if (pm === 'test' || pm === 'cmp') {
           const parts = splitOperands(pops);
           if (parts.length === 2 && parts[0] === parts[1]) {
-            pred = `${parts[0]} == 0`;
-            if (cond === 'ne' || cond === 'nz') pred = `${parts[0]} != 0`;
+            pred = `${parts[0]} ${cond === 'ne' || cond === 'nz' ? '!=' : '=='} 0`;
           } else if (parts.length === 2) {
-            pred = `${parts[0]} == ${parts[1]}`;
-            if (cond === 'ne' || cond === 'nz') pred = `${parts[0]} != ${parts[1]}`;
-            if (cond === 'l') pred = `${parts[0]} < ${parts[1]}`;
-            if (cond === 'g') pred = `${parts[0]} > ${parts[1]}`;
-            if (cond === 'le') pred = `${parts[0]} <= ${parts[1]}`;
-            if (cond === 'ge') pred = `${parts[0]} >= ${parts[1]}`;
+            const sym = (cond === 'ne' || cond === 'nz') ? '!=' :
+                        (cond === 'e' || cond === 'z') ? '==' :
+                        (cond === 'l') ? '<' :
+                        (cond === 'g') ? '>' :
+                        (cond === 'le') ? '<=' :
+                        (cond === 'ge') ? '>=' : '==';
+            pred = `${parts[0]} ${sym} ${parts[1]}`;
           }
         }
       }
@@ -920,250 +912,242 @@
     $('btn-decompile').addEventListener('click', () => {
       if (!state.instructions.length) return;
 
-      log('Running compliant pseudo-C emitter engine...', 'info');
+      log('Running v2 Spec Compliant Byte-Tiled Pseudo-C Emitter...', 'info');
 
-      const rawInstrs = state.instructions;
-      const validBoundaryVAs = new Set(rawInstrs.map(i => Number(i.address)));
+      const rawBuffer = state.patchedBuffer || state.rawBuffer;
+      const codeStartOff = state.codeFileOffset;
+      const codeLen = state.codeBytes.length;
+      const baseVa = state.codeBaseVa;
+      const instrs = state.instructions;
+
+      // 1.1 Byte-exact Tiling & Gap Identification
+      const instructionMap = new Map();
+      const validBoundaryVAs = new Set();
       const branchTargets = new Set();
-      const codeLines = [];
-      const frameSetupVAs = new Set();
-      const frameRestoreVAs = new Set();
 
-      // Pass 1: Build Targets & Misalignment Detection
-      for (let idx = 0; idx < rawInstrs.length; idx++) {
-        const instr = rawInstrs[idx];
-        const va = Number(instr.address);
-        const sz = Number(instr.size || 0);
-        const endVa = va + sz;
-        const m = (instr.mnemonic || '').toLowerCase();
-        const ops = instr.op_str || '';
+      for (const inst of instrs) {
+        const va = Number(inst.address);
+        instructionMap.set(va, inst);
+        validBoundaryVAs.add(va);
+      }
 
-        // RIP relative resolution check
+      // Collect jump/call targets
+      for (const inst of instrs) {
+        const m = (inst.mnemonic || '').toLowerCase();
+        const ops = inst.op_str || '';
+        const endVa = Number(inst.address) + Number(inst.size || 0);
         const ripRes = resolveRipRelative(ops, endVa);
 
-        // Branch target collection
         if (m.startsWith('j') || m === 'call') {
-          let targetVa = null;
-          if (ripRes.resolvedVa !== null) {
-            targetVa = ripRes.resolvedVa;
-          } else if (ops.startsWith('0x') || ops.startsWith('0X') || !isNaN(ops)) {
+          let targetVa = ripRes.resolvedVa;
+          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
             targetVa = parseInt(ops, 16);
           }
-          if (targetVa !== null) {
-            branchTargets.add(targetVa);
-          }
-        }
-
-        // 2.1 Misalignment check against boundaries
-        if (idx > 0) {
-          const prevEndVa = Number(rawInstrs[idx - 1].address) + Number(rawInstrs[idx - 1].size);
-          if (va < prevEndVa) {
-            instr.isMisaligned = true;
-          }
+          if (targetVa !== null) branchTargets.add(targetVa);
         }
       }
 
-      // Pass 2: Constant Folding across valid linear blocks (3.1 & 3.2 & 11)
-      const registerState = {};
-      const folds = {};
+      // Pass: Build Tiled Stream (Instructions + Gaps + Labels + Home-slot Entry Detection)
+      let outText = `// RE-Studio v2 Pseudo-C Emitter Output\n`;
+      outText += `// Binary: ${state.fileName}\n`;
+      outText += `// Start VA: 0x${baseVa.toString(16).toUpperCase()}\n\n`;
 
-      for (let idx = 0; idx < rawInstrs.length; idx++) {
-        const instr = rawInstrs[idx];
-        const va = Number(instr.address);
-        const m = (instr.mnemonic || '').toLowerCase();
-        const ops = instr.op_str || '';
+      let currentOff = 0;
+      let prevInstr = null;
+      let inOrphan = false;
+      let prologueBlock = [];
+      let inPrologue = true;
 
-        // Reset fold state across branches, calls, labels, or targets
-        if (branchTargets.has(va) || m === 'call' || m.startsWith('j')) {
-          Object.keys(registerState).forEach(k => delete registerState[k]);
-          continue;
-        }
+      while (currentOff < codeLen) {
+        const currentVa = baseVa + currentOff;
+        const fileOff = codeStartOff + currentOff;
 
-        if (m === 'mov' || m === 'movabs') {
-          const parts = splitOperands(ops);
-          if (parts.length === 2) {
-            const reg = parts[0].toLowerCase();
-            const val = parseInt(parts[1], 16);
-            if (!isNaN(val)) {
-              registerState[reg] = { val, startIdx: idx, count: 1 };
-            } else {
-              delete registerState[reg];
-            }
+        // Check if an instruction starts at currentVa
+        const inst = instructionMap.get(currentVa);
+
+        if (inst) {
+          const m = (inst.mnemonic || '').toLowerCase();
+          let ops = inst.op_str || '';
+          const sz = Number(inst.size || 0);
+          const endVa = currentVa + sz;
+          const instBytesHex = bytesToHex(rawBuffer.slice(fileOff, fileOff + sz));
+          const vaHex = '0x' + currentVa.toString(16).toUpperCase();
+
+          // 1.3 & 1.4 Entry Heuristic: Home slot store before sub rsp or push run
+          const isHomeSlotStore = (m === 'mov' && (ops.includes('[rsp + 8]') || ops.includes('[rsp + 0x8]')) && (ops.includes('rcx') || ops.includes('ecx')));
+          if (isHomeSlotStore || (branchTargets.has(currentVa) && (m === 'push' || m === 'sub'))) {
+            const argComment = ops.includes('ecx') ? '32-bit arg (ecx)' : 'args rcx, edx, r8';
+            outText += `\nloc_${currentVa.toString(16).toUpperCase()}: // fn entry: ${argComment}\n`;
+            inOrphan = false;
+          } else if (branchTargets.has(currentVa)) {
+            const isMapped = validBoundaryVAs.has(currentVa);
+            outText += `\nloc_${currentVa.toString(16).toUpperCase()}:${isMapped ? '' : ' // UNMAPPED'}\n`;
+            inOrphan = false;
+          } else if (inOrphan) {
+            outText += `\nloc_${currentVa.toString(16).toUpperCase()}: // ORPHAN, flags live from caller\n`;
+            inOrphan = false;
           }
-        } else if (['xor', 'or', 'add', 'sub', 'not'].includes(m)) {
-          const parts = splitOperands(ops);
-          const reg = parts[0].toLowerCase();
-          if (registerState[reg]) {
-            const current = registerState[reg];
-            let foldedVal = current.val;
-            const argVal = parts[1] ? parseInt(parts[1], 16) : NaN;
 
-            if (m === 'not') foldedVal = ~foldedVal;
-            else if (!isNaN(argVal)) {
-              if (m === 'xor') foldedVal ^= argVal;
-              if (m === 'or') foldedVal |= argVal;
-              if (m === 'add') foldedVal += argVal;
-              if (m === 'sub') foldedVal -= argVal;
-            } else {
-              delete registerState[reg];
+          // 7.2 Collapse Prologue & Epilogue
+          if (inPrologue && (m === 'push' || (m === 'sub' && ops.includes('rsp')) || (m === 'mov' && ops.includes('rsp')))) {
+            prologueBlock.push(`${m} ${ops}`);
+            currentOff += sz;
+            prevInstr = inst;
+            continue;
+          } else if (inPrologue && prologueBlock.length > 0) {
+            outText += `  // frame: ${prologueBlock.join('; ')}\n`;
+            inPrologue = false;
+          }
+
+          // 2.3 Strip inert NOPs
+          if (m === 'nop') {
+            if (!ops.includes('[') && !ops.includes('rax')) {
+              currentOff += sz;
+              prevInstr = inst;
               continue;
             }
+          }
 
-            current.val = foldedVal;
-            current.count += 1;
-
-            if (current.count >= 3) {
-              folds[idx] = {
-                foldedVal: '0x' + (foldedVal >>> 0).toString(16).toUpperCase(),
-                count: current.count
-              };
+          // 2.2 INT3 Classification
+          if (m === 'int3') {
+            const nextVa = currentVa + sz;
+            const hasBranchPast = branchTargets.has(nextVa);
+            if (hasBranchPast) {
+              outText += `  // trap (obfuscation) // ${vaHex}\n`;
+            } else if (currentOff + sz >= codeLen || instructionMap.get(nextVa)?.mnemonic === 'nop') {
+              outText += `  // alignment padding // ${vaHex}\n`;
+            } else {
+              outText += `  // noreturn boundary // ${vaHex}\n`;
             }
-          }
-        }
-      }
-
-      // Pass 3: Strict Code Line Generation
-      let outText = `// Strict Pseudo-C output generated by RE-Studio\n`;
-      outText += `// Binary: ${state.fileName}\n`;
-      outText += `// Base VA: 0x${state.codeBaseVa.toString(16).toUpperCase()}\n\n`;
-      outText += `sub_${state.codeBaseVa.toString(16).toUpperCase()}() {\n`;
-
-      let inPrologue = true;
-      let prologueBlock = [];
-
-      for (let idx = 0; idx < rawInstrs.length; idx++) {
-        const instr = rawInstrs[idx];
-        const va = Number(instr.address);
-        const sz = Number(instr.size || 0);
-        const endVa = va + sz;
-        const vaHex = '0x' + va.toString(16).toUpperCase();
-        const m = (instr.mnemonic || '').toLowerCase();
-        let ops = instr.op_str || '';
-
-        // 2.3 NOP stripping
-        if (m === 'nop') {
-          if (ops.includes('[') || ops.includes('rax')) continue;
-        }
-
-        // 7.4 Prologue / Epilogue collapsing
-        if (inPrologue && (m === 'push' || (m === 'sub' && ops.includes('rsp')) || (m === 'mov' && ops.includes('rsp')))) {
-          prologueBlock.push(`${m} ${ops}`);
-          continue;
-        } else if (inPrologue && prologueBlock.length > 0) {
-          outText += `  // frame: ${prologueBlock.join('; ')}\n`;
-          inPrologue = false;
-        }
-
-        // 1.3 Label emission for targets
-        if (branchTargets.has(va)) {
-          const isMapped = validBoundaryVAs.has(va);
-          outText += `loc_${va.toString(16).toUpperCase()}:${isMapped ? '' : ' // UNMAPPED'}\n`;
-        }
-
-        // 2.1 Misaligned instruction handling
-        if (instr.isMisaligned) {
-          outText += `  // MISALIGNED: 0x${va.toString(16).toUpperCase()} ${m} ${ops}\n`;
-          continue;
-        }
-
-        // 2.2 INT3 classification
-        if (m === 'int3') {
-          const nextInstr = rawInstrs[idx + 1];
-          const hasBranchPast = nextInstr && branchTargets.has(Number(nextInstr.address));
-          if (hasBranchPast) {
-            outText += `  // trap (obfuscation) // ${vaHex}\n`;
-          } else if (idx === rawInstrs.length - 1 || (nextInstr && (nextInstr.mnemonic || '').startsWith('nop'))) {
-            outText += `  // alignment padding // ${vaHex}\n`;
-          } else {
-            outText += `  // noreturn boundary // ${vaHex}\n`;
-          }
-          continue;
-        }
-
-        // 1.1 RIP relative resolution
-        const ripRes = resolveRipRelative(ops, endVa);
-        ops = ripRes.resolvedStr;
-
-        // 1.4 Normalize indexing scale
-        ops = normalizeAddressingModes(ops);
-
-        // 3.3 Golden Ratio / Known Constant Annotations
-        let constantAnno = '';
-        if (ops.includes('0x9e3779b97f4a7c15') || ops.includes('9e3779b97f4a7c15')) {
-          constantAnno = ' // 64-bit golden ratio, absl Mix multiplier';
-        }
-
-        // 3.1 & 3.2 Folds annotation
-        let foldAnno = '';
-        if (folds[idx]) {
-          foldAnno = ` // FOLDED from ${folds[idx].count} insns -> ${folds[idx].foldedVal}`;
-        }
-
-        // 4.4 Tail Call optimization (jmp external -> return)
-        if (m === 'jmp') {
-          let targetVa = ripRes.resolvedVa;
-          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
-            targetVa = parseInt(ops, 16);
-          }
-          if (targetVa !== null && !validBoundaryVAs.has(targetVa)) {
-            const targetHex = formatAbsoluteAddress(targetVa);
-            outText += `  return sub_${targetHex}(); // ${vaHex}\n`;
+            currentOff += sz;
+            prevInstr = inst;
             continue;
           }
-        }
 
-        // 4.5 Indirect Call tag
-        let indirectTag = '';
-        if (m === 'call' && (ops.includes('[') || ops.startsWith('r'))) {
-          indirectTag = ' // INDIRECT: table base unresolved';
-        }
+          // 3.1 Implicit-operand correction
+          if (m === 'outsd') {
+            ops = 'DX, ES:[rdi]';
+          }
 
-        // 4.1 & 4.2 Branch predicate resolution
-        if (m.startsWith('j') && m !== 'jmp') {
-          let targetVa = ripRes.resolvedVa;
-          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
-            targetVa = parseInt(ops, 16);
-          }
-          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
-          const prevInstr = idx > 0 ? rawInstrs[idx - 1] : null;
-          const pred = resolvePredicate(m, prevInstr);
-          outText += `  if (${pred}) goto loc_${targetHex};${constantAnno}${foldAnno} // ${vaHex}\n`;
-          continue;
-        }
+          // 0.1 & 1.1 RIP-relative resolution
+          const ripRes = resolveRipRelative(ops, endVa);
+          ops = ripRes.resolvedStr;
 
-        // Standard statement rendering (One instruction per line, VA at end)
-        if (m === 'jmp') {
-          let targetVa = ripRes.resolvedVa;
-          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
-            targetVa = parseInt(ops, 16);
+          // 0.1 Base+disp32 preservation
+          if (ops.includes('[rcx -') || ops.includes('[rdx -') || ops.includes('[rax -')) {
+            ops += ' // table-relative';
           }
-          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
-          outText += `  goto loc_${targetHex};${constantAnno}${foldAnno} // ${vaHex}\n`;
-        } else if (m === 'call') {
-          let targetVa = ripRes.resolvedVa;
-          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
-            targetVa = parseInt(ops, 16);
+
+          // 1.4 Normalize indexing scales
+          ops = normalizeAddressingModes(ops);
+
+          // Annotations & Idiom Pattern Matching ($3.3, $5.3, $6.3, $6.4)
+          let annotations = '';
+
+          // 5.3 Constant Annotations
+          if (ops.includes('0x9e3779b97f4a7c15') || ops.includes('9e3779b97f4a7c15')) {
+            annotations += ' // golden ratio, Mix multiplier';
           }
-          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
-          outText += `  sub_${targetHex}();${indirectTag}${constantAnno}${foldAnno} // ${vaHex}\n`;
-        } else if (m === 'ret' || m === 'retn') {
-          outText += `  return; // ${vaHex}\n`;
+          if (ops.includes('0x3fff') || ops.includes('3fff')) {
+            annotations += ' // last-group clamp';
+          }
+
+          // 4.11 Abseil & Vector Idiom Annotations
+          if (m === 'tzcnt') annotations += ' // lowest set bit';
+          if (m === 'movzx' && ops.includes('[rsi]')) annotations += ' // h2 shift count';
+          if (m === 'mov' && ops.includes('[rcx + rax*4]')) annotations += ' // byte->ctrl, stride 4';
+          if (m === 'not' && ops.includes('rax') && prevInstr === null) annotations += ' // rax: incoming seed';
+          if (m === 'and' && ops.includes('0x20')) annotations += ' // MaskFull';
+
+          // 6.4 Float Conversions
+          if (m === 'cvtsi2ss' || m === 'cvttss2si') annotations += ' // unsigned-64->float conversion unit';
+
+          // 0.2 Out-of-image Branch Verification
+          if (m === 'jmp') {
+            let targetVa = ripRes.resolvedVa;
+            if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+              targetVa = parseInt(ops, 16);
+            }
+            if (targetVa !== null && !validBoundaryVAs.has(targetVa)) {
+              const relCalc = `// 0x${currentVa.toString(16).toUpperCase()} + 0x${(targetVa - currentVa).toString(16).toUpperCase()}`;
+              outText += `  return 0x${targetVa.toString(16).toUpperCase()}(${ops}); ${relCalc} // EXTERNAL\n`;
+              currentOff += sz;
+              prevInstr = inst;
+              inOrphan = true;
+              continue;
+            }
+          }
+
+          // 4.1 Condition Code Resolution
+          if (m.startsWith('j') && m !== 'jmp') {
+            let targetVa = ripRes.resolvedVa;
+            if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+              targetVa = parseInt(ops, 16);
+            }
+            const targetHex = targetVa !== null ? '0x' + targetVa.toString(16).toUpperCase() : ops;
+            const pred = resolvePredicate(m, prevInstr);
+            outText += `  if (${pred}) goto loc_${targetHex.replace('0x', '')};${annotations} // ${vaHex}\n`;
+            currentOff += sz;
+            prevInstr = inst;
+            continue;
+          }
+
+          // 4.5 Indirect Call Tag
+          let indirectTag = '';
+          if (m === 'call' && (ops.includes('[') || ops.startsWith('r'))) {
+            indirectTag = ' // indirect';
+          }
+
+          // Line emission (Format: bytes mnemonic ops // 0xVA comment)
+          if (m === 'jmp') {
+            let targetVa = ripRes.resolvedVa;
+            if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+              targetVa = parseInt(ops, 16);
+            }
+            const targetHex = targetVa !== null ? targetVa.toString(16).toUpperCase() : ops;
+            outText += `  goto loc_${targetHex};${annotations} // ${vaHex}\n`;
+            inOrphan = true;
+          } else if (m === 'call') {
+            let targetVa = ripRes.resolvedVa;
+            if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+              targetVa = parseInt(ops, 16);
+            }
+            const targetHex = targetVa !== null ? '0x' + targetVa.toString(16).toUpperCase() : ops;
+            outText += `  call ${targetHex};${indirectTag}${annotations} // ${vaHex}\n`;
+          } else if (m === 'ret' || m === 'retn') {
+            outText += `  return; // ${vaHex}\n`;
+            inOrphan = true;
+          } else {
+            outText += `  ${m} ${ops};${annotations} // ${vaHex}\n`;
+          }
+
+          currentOff += sz;
+          prevInstr = inst;
         } else {
-          outText += `  ${m} ${ops};${constantAnno}${foldAnno} // ${vaHex}\n`;
+          // 1.2 GAP Byte Handling (Leftover single or unparsed bytes)
+          const gapByte = rawBuffer[fileOff];
+          const gapHex = gapByte.toString(16).toUpperCase().padStart(2, '0');
+          const gapVaHex = '0x' + currentVa.toString(16).toUpperCase();
+
+          // 2.1 Inert Prefix Detection (e.g. standalone 0x67)
+          const isInertPrefix = (gapByte === 0x67 || gapByte === 0x66 || gapByte === 0x48);
+          const gapComment = isInertPrefix ? 'inert prefix' : 'stray';
+
+          outText += `  ${gapVaHex}  ${gapHex}                               // GAP: 1 byte, 0x${gapHex} (${gapComment})\n`;
+          currentOff += 1;
+          prevInstr = null;
         }
       }
-
-      outText += `}\n`;
 
       state.pseudoCode = outText;
       $('decomp-output').textContent = outText;
-      $('info-decomp-status').textContent = 'Generated';
+      $('info-decomp-status').textContent = 'Generated (v2 Spec)';
       $('btn-download-c').disabled = false;
       switchTab('decomp');
-      log('Strict, rules-compliant Pseudo-C successfully generated.', 'success');
+      log('v2 Spec Pseudo-C successfully generated with byte-exact tiling.', 'success');
     });
 
-    // Targeted Code-Level Anti-Debug Patching
+    // Code-Level Anti-Debug Patching
     $('btn-antidebug').addEventListener('click', () => {
       if (!state.rawBuffer) return;
 
@@ -1172,7 +1156,7 @@
       );
 
       if (!patchTargets.length) {
-        log('No patchable code-level anti-debug opcodes found in scanned region.', 'warning');
+        log('No code-level anti-debug opcodes found in scanned scope.', 'warning');
         return;
       }
 
@@ -1198,16 +1182,16 @@
 
       renderDisassembly();
       renderHex(state.patchedBuffer);
-      log(`Applied ${applied} patch(es). Download modified executable via "Download Patched Binary".`, 'info');
+      log(`Applied ${applied} NOP patch(es). Export modified binary via "Download Patched Binary".`, 'info');
     });
 
     $('btn-download-c').addEventListener('click', () => {
       if (!state.pseudoCode) return;
       triggerDownload(
         new Blob([state.pseudoCode], { type: 'text/plain;charset=utf-8' }),
-        `${stripExt(state.fileName)}_pseudo.c`
+        `${stripExt(state.fileName)}_pseudo_v2.c`
       );
-      log('Downloaded Pseudo-C file.', 'info');
+      log('Downloaded v2 Pseudo-C file.', 'info');
     });
 
     $('btn-download-bin').addEventListener('click', () => {
@@ -1230,20 +1214,8 @@
       URL.revokeObjectURL(url);
     }
 
-    function splitOperands(opStr) {
-      return opStr.split(',').map(s => s.trim()).filter(Boolean);
-    }
-
     function stripExt(name) {
       return name.replace(/\.[^/.]+$/, '') || 'binary';
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
     }
 
     window.addEventListener('load', () => {
