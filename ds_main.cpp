@@ -1,1145 +1,529 @@
-// main.cpp — single-file x86-64 reverse-engineering tool.
-// Build: g++ -std=c++17 -O2 -o reforge main.cpp
-// No external libraries.
+// main.cpp
+// Single-file PE / DLL / BIN analyzer + basic linear x86 disassembler
+// Pure C++17, zero external dependencies. Compile: g++ -std=c++17 -O2 -o retool main.cpp
+// Usage: ./retool <file.exe|.dll|.bin>
 
-#include <algorithm>
-#include <array>
-#include <cctype>
-#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <map>
-#include <optional>
-#include <set>
-#include <sstream>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
+#include <iomanip>
+#include <algorithm>
+#include <map>
 
-// ------------------------------------------------------------
-// byte helpers
-// ------------------------------------------------------------
-static uint16_t r16(const std::vector<uint8_t>& b, size_t o) {
-  if (o + 2 > b.size()) return 0;
-  return static_cast<uint16_t>(b[o]) |
-         (static_cast<uint16_t>(b[o + 1]) << 8);
-}
-static uint32_t r32(const std::vector<uint8_t>& b, size_t o) {
-  if (o + 4 > b.size()) return 0;
-  return static_cast<uint32_t>(b[o]) |
-         (static_cast<uint32_t>(b[o + 1]) << 8) |
-         (static_cast<uint32_t>(b[o + 2]) << 16) |
-         (static_cast<uint32_t>(b[o + 3]) << 24);
-}
-static uint64_t r64(const std::vector<uint8_t>& b, size_t o) {
-  if (o + 8 > b.size()) return 0;
-  uint64_t v = 0;
-  for (int i = 7; i >= 0; --i)
-    v = (v << 8) | static_cast<uint64_t>(b[o + static_cast<size_t>(i)]);
-  return v;
-}
-static std::string cstr(const std::vector<uint8_t>& b, size_t off,
-                        size_t maxlen = 4096) {
-  std::string s;
-  if (off >= b.size()) return s;
-  const size_t end = std::min(b.size(), off + maxlen);
-  for (size_t i = off; i < end; ++i) {
-    const char c = static_cast<char>(b[i]);
-    if (c == '\0') break;
-    s.push_back(c);
-  }
-  return s;
-}
-static std::vector<uint8_t> read_file(const std::string& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) return {};
-  in.seekg(0, std::ios::end);
-  const std::streamoff n = in.tellg();
-  if (n <= 0) return {};
-  in.seekg(0, std::ios::beg);
-  std::vector<char> tmp(static_cast<size_t>(n));
-  in.read(tmp.data(), n);
-  return std::vector<uint8_t>(tmp.begin(), tmp.end());
-}
+#pragma pack(push, 1)
 
-// ------------------------------------------------------------
-// domain model
-// ------------------------------------------------------------
-struct Section {
-  std::string name;
-  uint64_t vaddr = 0;
-  uint64_t offset = 0;
-  uint64_t size = 0;
-  uint64_t flags = 0;
-  std::vector<uint8_t> data;
-  double entropy = 0.0;
-  bool executable() const { return (flags & 0x4ULL) != 0; }
+struct IMAGE_DOS_HEADER {
+    uint16_t e_magic;
+    uint16_t e_cblp;
+    uint16_t e_cp;
+    uint16_t e_crlc;
+    uint16_t e_cparhdr;
+    uint16_t e_minalloc;
+    uint16_t e_maxalloc;
+    uint16_t e_ss;
+    uint16_t e_sp;
+    uint16_t e_csum;
+    uint16_t e_ip;
+    uint16_t e_cs;
+    uint16_t e_lfarlc;
+    uint16_t e_ovno;
+    uint16_t e_res[4];
+    uint16_t e_oemid;
+    uint16_t e_oeminfo;
+    uint16_t e_res2[10];
+    int32_t  e_lfanew;
 };
 
-struct Import {
-  std::string library;
-  std::string name;
-  uint64_t iat = 0;
+struct IMAGE_FILE_HEADER {
+    uint16_t Machine;
+    uint16_t NumberOfSections;
+    uint32_t TimeDateStamp;
+    uint32_t PointerToSymbolTable;
+    uint32_t NumberOfSymbols;
+    uint16_t SizeOfOptionalHeader;
+    uint16_t Characteristics;
 };
 
-struct Export {
-  std::string name;
-  uint64_t addr = 0;
+struct IMAGE_DATA_DIRECTORY {
+    uint32_t VirtualAddress;
+    uint32_t Size;
 };
 
-struct BinaryInfo {
-  std::string path;
-  std::string format;
-  std::string arch;
-  uint64_t entry = 0;
-  uint64_t image_base = 0;
-  std::vector<Section> sections;
-  std::vector<Import> imports;
-  std::vector<Export> exports;
+struct IMAGE_OPTIONAL_HEADER32 {
+    uint16_t Magic;
+    uint8_t  MajorLinkerVersion;
+    uint8_t  MinorLinkerVersion;
+    uint32_t SizeOfCode;
+    uint32_t SizeOfInitializedData;
+    uint32_t SizeOfUninitializedData;
+    uint32_t AddressOfEntryPoint;
+    uint32_t BaseOfCode;
+    uint32_t BaseOfData;
+    uint32_t ImageBase;
+    uint32_t SectionAlignment;
+    uint32_t FileAlignment;
+    uint16_t MajorOperatingSystemVersion;
+    uint16_t MinorOperatingSystemVersion;
+    uint16_t MajorImageVersion;
+    uint16_t MinorImageVersion;
+    uint16_t MajorSubsystemVersion;
+    uint16_t MinorSubsystemVersion;
+    uint32_t Win32VersionValue;
+    uint32_t SizeOfImage;
+    uint32_t SizeOfHeaders;
+    uint32_t CheckSum;
+    uint16_t Subsystem;
+    uint16_t DllCharacteristics;
+    uint32_t SizeOfStackReserve;
+    uint32_t SizeOfStackCommit;
+    uint32_t SizeOfHeapReserve;
+    uint32_t SizeOfHeapCommit;
+    uint32_t LoaderFlags;
+    uint32_t NumberOfRvaAndSizes;
+    IMAGE_DATA_DIRECTORY DataDirectory[16];
 };
 
-static double entropy_bytes(const std::vector<uint8_t>& d) {
-  if (d.empty()) return 0.0;
-  std::array<size_t, 256> cnt{};
-  for (uint8_t x : d) ++cnt[x];
-  const double n = static_cast<double>(d.size());
-  double e = 0.0;
-  for (size_t c : cnt) {
-    if (!c) continue;
-    const double p = static_cast<double>(c) / n;
-    e -= p * std::log2(p);
-  }
-  return e;
-}
+struct IMAGE_OPTIONAL_HEADER64 {
+    uint16_t Magic;
+    uint8_t  MajorLinkerVersion;
+    uint8_t  MinorLinkerVersion;
+    uint32_t SizeOfCode;
+    uint32_t SizeOfInitializedData;
+    uint32_t SizeOfUninitializedData;
+    uint32_t AddressOfEntryPoint;
+    uint32_t BaseOfCode;
+    uint64_t ImageBase;
+    uint32_t SectionAlignment;
+    uint32_t FileAlignment;
+    uint16_t MajorOperatingSystemVersion;
+    uint16_t MinorOperatingSystemVersion;
+    uint16_t MajorImageVersion;
+    uint16_t MinorImageVersion;
+    uint16_t MajorSubsystemVersion;
+    uint16_t MinorSubsystemVersion;
+    uint32_t Win32VersionValue;
+    uint32_t SizeOfImage;
+    uint32_t SizeOfHeaders;
+    uint32_t CheckSum;
+    uint16_t Subsystem;
+    uint16_t DllCharacteristics;
+    uint64_t SizeOfStackReserve;
+    uint64_t SizeOfStackCommit;
+    uint64_t SizeOfHeapReserve;
+    uint64_t SizeOfHeapCommit;
+    uint32_t LoaderFlags;
+    uint32_t NumberOfRvaAndSizes;
+    IMAGE_DATA_DIRECTORY DataDirectory[16];
+};
 
-// ------------------------------------------------------------
-// ELF64 parser
-// ------------------------------------------------------------
-static bool parse_elf(const std::vector<uint8_t>& b, BinaryInfo& bi) {
-  if (b.size() < 64) return false;
-  if (!(b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F')) return false;
-  if (b[4] != 2 || b[5] != 1) return false;  // ELF64 little-endian
+struct IMAGE_NT_HEADERS32 {
+    uint32_t Signature;
+    IMAGE_FILE_HEADER FileHeader;
+    IMAGE_OPTIONAL_HEADER32 OptionalHeader;
+};
 
-  const uint64_t entry = r64(b, 24);
-  const uint64_t shoff = r64(b, 40);
-  const uint16_t shentsize = r16(b, 58);
-  const uint16_t shnum = r16(b, 60);
-  const uint16_t shstrndx = r16(b, 62);
+struct IMAGE_NT_HEADERS64 {
+    uint32_t Signature;
+    IMAGE_FILE_HEADER FileHeader;
+    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+};
 
-  if (shentsize < 64 || shnum == 0) return false;
-  if (shoff > b.size() || shnum > (b.size() - shoff) / 64) return false;
+struct IMAGE_SECTION_HEADER {
+    char     Name[8];
+    uint32_t VirtualSize;
+    uint32_t VirtualAddress;
+    uint32_t SizeOfRawData;
+    uint32_t PointerToRawData;
+    uint32_t PointerToRelocations;
+    uint32_t PointerToLinenumbers;
+    uint16_t NumberOfRelocations;
+    uint16_t NumberOfLinenumbers;
+    uint32_t Characteristics;
+};
 
-  struct SH {
-    uint32_t name = 0;
-    uint32_t type = 0;
-    uint64_t flags = 0;
-    uint64_t addr = 0;
-    uint64_t off = 0;
-    uint64_t size = 0;
-    uint32_t link = 0;
-  };
-  std::vector<SH> shs;
-  shs.reserve(shnum);
-  for (uint16_t i = 0; i < shnum; ++i) {
-    const size_t o = static_cast<size_t>(shoff) + static_cast<size_t>(i) * 64;
-    SH s;
-    s.name = r32(b, o + 0);
-    s.type = r32(b, o + 4);
-    s.flags = r64(b, o + 8);
-    s.addr = r64(b, o + 16);
-    s.off = r64(b, o + 24);
-    s.size = r64(b, o + 32);
-    s.link = r32(b, o + 40);
-    shs.push_back(s);
-  }
+struct IMAGE_IMPORT_DESCRIPTOR {
+    uint32_t OriginalFirstThunk;
+    uint32_t TimeDateStamp;
+    uint32_t ForwarderChain;
+    uint32_t Name;
+    uint32_t FirstThunk;
+};
 
-  uint64_t shstr_off = 0, shstr_size = 0;
-  if (shstrndx < shs.size()) {
-    shstr_off = shs[shstrndx].off;
-    shstr_size = shs[shstrndx].size;
-  }
+struct IMAGE_EXPORT_DIRECTORY {
+    uint32_t Characteristics;
+    uint32_t TimeDateStamp;
+    uint16_t MajorVersion;
+    uint16_t MinorVersion;
+    uint32_t Name;
+    uint32_t Base;
+    uint32_t NumberOfFunctions;
+    uint32_t NumberOfNames;
+    uint32_t AddressOfFunctions;
+    uint32_t AddressOfNames;
+    uint32_t AddressOfNameOrdinals;
+};
 
-  for (const SH& sh : shs) {
-    Section sec;
-    sec.name = cstr(b, static_cast<size_t>(shstr_off + sh.name),
-                    static_cast<size_t>(shstr_size));
-    sec.vaddr = sh.addr;
-    sec.offset = sh.off;
-    sec.size = sh.size;
-    sec.flags = sh.flags;
-    if (sh.off <= b.size() && sh.size <= b.size() - sh.off) {
-      sec.data.assign(b.begin() + static_cast<std::ptrdiff_t>(sh.off),
-                      b.begin() + static_cast<std::ptrdiff_t>(sh.off + sh.size));
-      sec.entropy = entropy_bytes(sec.data);
+#pragma pack(pop)
+
+constexpr uint16_t IMAGE_DOS_SIGNATURE = 0x5A4D;
+constexpr uint32_t IMAGE_NT_SIGNATURE  = 0x00004550;
+constexpr uint16_t IMAGE_NT_OPTIONAL_HDR32_MAGIC = 0x10B;
+constexpr uint16_t IMAGE_NT_OPTIONAL_HDR64_MAGIC = 0x20B;
+constexpr uint16_t IMAGE_FILE_MACHINE_I386  = 0x014C;
+constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
+
+constexpr size_t IMAGE_DIRECTORY_ENTRY_EXPORT = 0;
+constexpr size_t IMAGE_DIRECTORY_ENTRY_IMPORT = 1;
+
+class Binary {
+public:
+    std::vector<uint8_t> data;
+    size_t size() const { return data.size(); }
+    const uint8_t* ptr(size_t off = 0) const { return data.data() + off; }
+    bool valid(size_t off, size_t len) const { return off + len <= data.size(); }
+
+    template<typename T>
+    bool read(size_t off, T& out) const {
+        if (!valid(off, sizeof(T))) return false;
+        std::memcpy(&out, ptr(off), sizeof(T));
+        return true;
     }
-    bi.sections.push_back(std::move(sec));
-  }
 
-  // imports / exports from .symtab and .dynsym
-  for (const SH& sh : shs) {
-    if (sh.type != 2 && sh.type != 11) continue;  // SHT_SYMTAB / SHT_DYNSYM
-    if (sh.link >= shs.size()) continue;
-    const SH& str = shs[sh.link];
-    if (sh.off > b.size() || sh.size > b.size() - sh.off) continue;
-    const size_t count = static_cast<size_t>(sh.size / 24);
-    for (size_t i = 0; i < count; ++i) {
-      const size_t o = static_cast<size_t>(sh.off) + i * 24;
-      if (o + 24 > b.size()) break;
-      const uint32_t nameoff = r32(b, o);
-      const uint8_t info = b[o + 4];
-      const uint16_t shndx = r16(b, o + 6);
-      const uint64_t value = r64(b, o + 8);
-      if (nameoff == 0) continue;
-      std::string name = cstr(b, static_cast<size_t>(str.off + nameoff),
-                              static_cast<size_t>(str.size));
-      if (name.empty()) continue;
-      if (shndx == 0) {
-        bi.imports.push_back(Import{"", std::move(name), 0});
-      } else if ((info & 0x0f) == 2 && value != 0) {
-        bi.exports.push_back(Export{std::move(name), value});
-      }
+    std::string read_string(size_t off, size_t max = 512) const {
+        if (off >= data.size()) return "";
+        size_t end = off;
+        while (end < data.size() && end - off < max && data[end] != 0) ++end;
+        return std::string(reinterpret_cast<const char*>(ptr(off)), end - off);
     }
-  }
+};
 
-  bi.format = "ELF64";
-  bi.entry = entry;
-  bi.arch = "unknown";
-  const uint16_t machine = r16(b, 18);
-  if (machine == 62) bi.arch = "x86_64";
-  else if (machine == 3) bi.arch = "x86";
-  else if (machine == 183) bi.arch = "aarch64";
-  else if (machine == 40) bi.arch = "arm";
-  else if (machine == 8) bi.arch = "mips";
-  else if (machine == 20) bi.arch = "ppc";
-  else if (machine == 21) bi.arch = "ppc64";
-  return true;
-}
-
-// ------------------------------------------------------------
-// PE32 / PE32+ parser
-// ------------------------------------------------------------
-static bool parse_pe(const std::vector<uint8_t>& b, BinaryInfo& bi) {
-  if (b.size() < 0x40 || b[0] != 'M' || b[1] != 'Z') return false;
-  const uint32_t peoff = r32(b, 0x3c);
-  if (peoff > b.size() || peoff + 24 > b.size()) return false;
-  if (!(b[peoff] == 'P' && b[peoff + 1] == 'E' && b[peoff + 2] == 0 &&
-        b[peoff + 3] == 0))
-    return false;
-
-  const uint16_t machine = r16(b, peoff + 4);
-  const uint16_t nsec = r16(b, peoff + 6);
-  const uint16_t optsize = r16(b, peoff + 20);
-  const size_t opt = static_cast<size_t>(peoff) + 24;
-  if (opt + 2 > b.size()) return false;
-  const uint16_t magic = r16(b, opt);
-  const bool pe64 = magic == 0x20b;
-  if (!pe64 && magic != 0x10b) return false;
-  if (opt + optsize > b.size()) return false;
-
-  const uint32_t entry_rva = r32(b, opt + 16);
-  const uint64_t image_base =
-      pe64 ? r64(b, opt + 24) : static_cast<uint64_t>(r32(b, opt + 28));
-
-  const size_t dd_off = opt + (pe64 ? 112 : 96);
-  const uint32_t ndirs = r32(b, opt + (pe64 ? 108 : 92));
-
-  struct PESec {
-    std::string name;
-    uint32_t va = 0;
-    uint32_t vsize = 0;
-    uint32_t raw = 0;
-    uint32_t rawsize = 0;
-    uint32_t chars = 0;
-  };
-  std::vector<PESec> psecs;
-  const size_t sec_table = opt + optsize;
-  for (uint16_t i = 0; i < nsec; ++i) {
-    const size_t o = sec_table + static_cast<size_t>(i) * 40;
-    if (o + 40 > b.size()) break;
-    PESec s;
-    s.name = cstr(b, o, 8);
-    s.vsize = r32(b, o + 8);
-    s.va = r32(b, o + 12);
-    s.rawsize = r32(b, o + 16);
-    s.raw = r32(b, o + 20);
-    s.chars = r32(b, o + 36);
-    psecs.push_back(s);
-  }
-
-  auto rva2off = [&](uint32_t rva) -> std::optional<uint32_t> {
-    for (const PESec& s : psecs) {
-      const uint32_t span = std::max(s.vsize, s.rawsize);
-      if (rva >= s.va && rva < s.va + span && s.raw < b.size()) {
-        const uint64_t off = static_cast<uint64_t>(s.raw) + (rva - s.va);
-        if (off < b.size()) return static_cast<uint32_t>(off);
-      }
-    }
-    if (rva < b.size()) return rva;  // headers
-    return std::nullopt;
-  };
-
-  auto dir = [&](size_t idx) -> std::pair<uint32_t, uint32_t> {
-    if (idx >= ndirs || dd_off + idx * 8 + 8 > b.size()) return {0, 0};
-    return {r32(b, dd_off + idx * 8), r32(b, dd_off + idx * 8 + 4)};
-  };
-
-  for (const PESec& s : psecs) {
-    Section sec;
-    sec.name = s.name;
-    sec.vaddr = image_base + s.va;
-    sec.offset = s.raw;
-    sec.size = s.rawsize;
-    sec.flags = (s.chars & 0x20000000u) ? 0x4ULL : 0ULL;
-    if (s.raw <= b.size() && s.rawsize <= b.size() - s.raw) {
-      sec.data.assign(b.begin() + static_cast<std::ptrdiff_t>(s.raw),
-                      b.begin() + static_cast<std::ptrdiff_t>(s.raw + s.rawsize));
-      sec.entropy = entropy_bytes(sec.data);
-    }
-    bi.sections.push_back(std::move(sec));
-  }
-
-  // imports
-  auto impdir = dir(1);
-  if (impdir.first && impdir.second) {
-    auto impoff = rva2off(impdir.first);
-    if (impoff) {
-      size_t o = *impoff;
-      for (int guard = 0; guard < 4096 && o + 20 <= b.size(); ++guard, o += 20) {
-        const uint32_t orig_thunk = r32(b, o + 0);
-        const uint32_t name_rva = r32(b, o + 12);
-        const uint32_t first_thunk = r32(b, o + 16);
-        if (!name_rva) break;
-        auto liboff = rva2off(name_rva);
-        std::string lib = liboff ? cstr(b, *liboff) : std::string();
-        const uint32_t thunk_rva = orig_thunk ? orig_thunk : first_thunk;
-        auto thunkoff = rva2off(thunk_rva);
-        if (!thunkoff) continue;
-        size_t t = *thunkoff;
-        for (int tguard = 0; tguard < 65536; ++tguard) {
-          const uint64_t val = pe64 ? r64(b, t) : r32(b, t);
-          if (!val) break;
-          const uint64_t flag = pe64 ? 0x8000000000000000ULL : 0x80000000ULL;
-          std::string name;
-          if (val & flag) {
-            name = "#" + std::to_string(val & 0xffff);
-          } else {
-            const uint32_t hint_rva = static_cast<uint32_t>(val & 0x7fffffffULL);
-            auto hintoff = rva2off(hint_rva + 2);
-            if (hintoff) name = cstr(b, *hintoff);
-          }
-          bi.imports.push_back(
-              Import{lib, std::move(name), image_base + first_thunk});
-          t += pe64 ? 8 : 4;
+uint32_t rva_to_offset(const std::vector<IMAGE_SECTION_HEADER>& sections, uint32_t rva, uint32_t image_base = 0) {
+    for (const auto& s : sections) {
+        if (rva >= s.VirtualAddress && rva < s.VirtualAddress + std::max(s.VirtualSize, s.SizeOfRawData)) {
+            return s.PointerToRawData + (rva - s.VirtualAddress);
         }
-      }
     }
-  }
-
-  // exports
-  auto expdir = dir(0);
-  if (expdir.first && expdir.second) {
-    auto expoff = rva2off(expdir.first);
-    if (expoff && *expoff + 40 <= b.size()) {
-      const size_t e = *expoff;
-      const uint32_t nfuncs = r32(b, e + 20);
-      const uint32_t nnames = r32(b, e + 24);
-      const uint32_t funcs_rva = r32(b, e + 28);
-      const uint32_t names_rva = r32(b, e + 32);
-      const uint32_t ords_rva = r32(b, e + 36);
-      auto funcs_off = rva2off(funcs_rva);
-      auto names_off = rva2off(names_rva);
-      auto ords_off = rva2off(ords_rva);
-      if (funcs_off && names_off && ords_off) {
-        for (uint32_t i = 0; i < nnames && i < nfuncs; ++i) {
-          const size_t no = *names_off + i * 4;
-          const size_t oo = *ords_off + i * 2;
-          if (no + 4 > b.size() || oo + 2 > b.size()) break;
-          const uint32_t name_rva = r32(b, no);
-          const uint16_t ord = r16(b, oo);
-          auto nameoff = rva2off(name_rva);
-          if (!nameoff) continue;
-          const size_t fo = *funcs_off + static_cast<size_t>(ord) * 4;
-          if (fo + 4 > b.size()) continue;
-          const uint32_t func_rva = r32(b, fo);
-          if (!func_rva) continue;
-          std::string name = cstr(b, *nameoff);
-          if (!name.empty())
-            bi.exports.push_back(Export{std::move(name), image_base + func_rva});
-        }
-      }
-    }
-  }
-
-  bi.format = pe64 ? "PE32+" : "PE32";
-  bi.image_base = image_base;
-  bi.entry = image_base + entry_rva;
-  if (machine == 0x8664) bi.arch = "x86_64";
-  else if (machine == 0x14c) bi.arch = "x86";
-  else if (machine == 0xaa64) bi.arch = "aarch64";
-  else if (machine == 0x1c0) bi.arch = "arm";
-  return true;
-}
-
-// ------------------------------------------------------------
-// x86 / x86-64 length decoder
-// Conservative: unknown or unsupported encodings return length 0.
-// ------------------------------------------------------------
-struct Decoded {
-  uint64_t addr = 0;
-  size_t len = 0;
-  bool call = false;
-  bool jump = false;
-  bool ret = false;
-  bool uncond = false;
-  bool has_target = false;
-  int64_t target = 0;
-};
-
-static int32_t s32(const uint8_t* p) {
-  return static_cast<int32_t>(static_cast<uint32_t>(p[0]) |
-                              (static_cast<uint32_t>(p[1]) << 8) |
-                              (static_cast<uint32_t>(p[2]) << 16) |
-                              (static_cast<uint32_t>(p[3]) << 24));
-}
-
-static Decoded decode_one(const uint8_t* p, size_t n, uint64_t addr) {
-  Decoded d;
-  d.addr = addr;
-  size_t i = 0;
-  bool opsz = false;
-  bool addrsz = false;
-  bool rexw = false;
-
-  while (i < n && i < 15) {
-    const uint8_t b = p[i];
-    if (b == 0x66) { opsz = true; ++i; continue; }
-    if (b == 0x67) { addrsz = true; ++i; continue; }
-    if (b == 0xF0 || b == 0xF2 || b == 0xF3 || b == 0x2E || b == 0x36 ||
-        b == 0x3E || b == 0x26 || b == 0x64 || b == 0x65) {
-      ++i;
-      continue;
-    }
-    if (b >= 0x40 && b <= 0x4F) {
-      rexw = (b & 8) != 0;
-      ++i;
-      continue;
-    }
-    break;
-  }
-  if (i >= n) return {};
-
-  const size_t op_pos = i;
-  const uint8_t op = p[i++];
-
-  if (op == 0xC4 || op == 0xC5 || op == 0x62) return {};  // VEX/EVEX
-
-  auto imm_size = [&](int kind) -> int {
-    if (kind == 1) return 1;
-    if (kind == 4) return 4;
-    if (kind == 8) return 8;
-    if (kind == 2) return opsz ? 2 : 4;
     return 0;
-  };
-
-  auto modrm = [&]() -> int {
-    if (i >= n) return -1;
-    const uint8_t m = p[i++];
-    const int mod = m >> 6;
-    const int rm = m & 7;
-    int disp = 0;
-    if (mod != 3) {
-      if (rm == 4) {
-        if (i >= n) return -1;
-        const uint8_t sib = p[i++];
-        const int base = sib & 7;
-        if (mod == 0 && base == 5) disp = 4;
-        else if (mod == 1) disp = 1;
-        else if (mod == 2) disp = 4;
-      } else {
-        if (mod == 0 && rm == 5) disp = 4;
-        else if (mod == 1) disp = 1;
-        else if (mod == 2) disp = 4;
-      }
-    }
-    if (i + static_cast<size_t>(disp) > n) return -1;
-    i += static_cast<size_t>(disp);
-    return 0;
-  };
-
-  auto alu = [&](int off) -> bool {
-    if (off < 4) {
-      if (modrm() < 0) return false;
-      d.len = i;
-      return true;
-    }
-    if (off == 4) {
-      if (i + 1 > n) return false;
-      i += 1;
-      d.len = i;
-      return true;
-    }
-    const int k = opsz ? 2 : 4;
-    if (i + static_cast<size_t>(k) > n) return false;
-    i += static_cast<size_t>(k);
-    d.len = i;
-    return true;
-  };
-
-  if ((op <= 0x05) || (op >= 0x08 && op <= 0x0D) ||
-      (op >= 0x10 && op <= 0x15) || (op >= 0x18 && op <= 0x1D) ||
-      (op >= 0x20 && op <= 0x25) || (op >= 0x28 && op <= 0x2D) ||
-      (op >= 0x30 && op <= 0x35) || (op >= 0x38 && op <= 0x3D)) {
-    int off = 0;
-    if (op <= 0x05) off = op - 0x00;
-    else if (op <= 0x0D) off = op - 0x08;
-    else if (op <= 0x15) off = op - 0x10;
-    else if (op <= 0x1D) off = op - 0x18;
-    else if (op <= 0x25) off = op - 0x20;
-    else if (op <= 0x2D) off = op - 0x28;
-    else if (op <= 0x35) off = op - 0x30;
-    else off = op - 0x38;
-    if (!alu(off)) return {};
-    return d;
-  }
-
-  switch (op) {
-    case 0x50: case 0x51: case 0x52: case 0x53:
-    case 0x54: case 0x55: case 0x56: case 0x57:
-    case 0x58: case 0x59: case 0x5A: case 0x5B:
-    case 0x5C: case 0x5D: case 0x5E: case 0x5F:
-    case 0x90: case 0x91: case 0x92: case 0x93:
-    case 0x94: case 0x95: case 0x96: case 0x97:
-    case 0x98: case 0x99: case 0x9A: case 0x9B:
-    case 0x9C: case 0x9D: case 0x9E: case 0x9F:
-    case 0xA4: case 0xA5: case 0xA6: case 0xA7:
-    case 0xAA: case 0xAB: case 0xAC: case 0xAD:
-    case 0xAE: case 0xAF:
-      d.len = i;
-      return d;
-
-    case 0x63:
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-
-    case 0x68:
-      if (i + 4 > n) return {};
-      i += 4;
-      d.len = i;
-      return d;
-    case 0x69:
-      if (modrm() < 0) return {};
-      if (i + static_cast<size_t>(opsz ? 2 : 4) > n) return {};
-      i += static_cast<size_t>(opsz ? 2 : 4);
-      d.len = i;
-      return d;
-    case 0x6A:
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0x6B:
-      if (modrm() < 0) return {};
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-
-    case 0x70: case 0x71: case 0x72: case 0x73:
-    case 0x74: case 0x75: case 0x76: case 0x77:
-    case 0x78: case 0x79: case 0x7A: case 0x7B:
-    case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-    case 0xEB: {
-      if (i + 1 > n) return {};
-      const int8_t rel = static_cast<int8_t>(p[i]);
-      i += 1;
-      d.len = i;
-      d.jump = true;
-      d.uncond = (op == 0xEB);
-      d.has_target = true;
-      d.target = static_cast<int64_t>(addr) + static_cast<int64_t>(d.len) + rel;
-      return d;
-    }
-
-    case 0x80:
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0x81:
-      if (modrm() < 0) return {};
-      if (i + static_cast<size_t>(opsz ? 2 : 4) > n) return {};
-      i += static_cast<size_t>(opsz ? 2 : 4);
-      d.len = i;
-      return d;
-    case 0x83:
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-
-    case 0x84: case 0x85: case 0x86: case 0x87:
-    case 0x88: case 0x89: case 0x8A: case 0x8B:
-    case 0x8C: case 0x8D: case 0x8E: case 0x8F:
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-
-    case 0xA0: case 0xA1: case 0xA2: case 0xA3: {
-      const int k = addrsz ? 4 : 8;
-      if (i + static_cast<size_t>(k) > n) return {};
-      i += static_cast<size_t>(k);
-      d.len = i;
-      return d;
-    }
-    case 0xA8:
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0xA9:
-      if (i + static_cast<size_t>(opsz ? 2 : 4) > n) return {};
-      i += static_cast<size_t>(opsz ? 2 : 4);
-      d.len = i;
-      return d;
-
-    case 0xB0: case 0xB1: case 0xB2: case 0xB3:
-    case 0xB4: case 0xB5: case 0xB6: case 0xB7:
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0xB8: case 0xB9: case 0xBA: case 0xBB:
-    case 0xBC: case 0xBD: case 0xBE: case 0xBF: {
-      const int k = rexw ? 8 : (opsz ? 2 : 4);
-      if (i + static_cast<size_t>(k) > n) return {};
-      i += static_cast<size_t>(k);
-      d.len = i;
-      return d;
-    }
-
-    case 0xC0: case 0xC1:
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0xC2: case 0xCA:
-      if (i + 2 > n) return {};
-      i += 2;
-      d.len = i;
-      d.ret = true;
-      return d;
-    case 0xC3: case 0xCB:
-      d.len = i;
-      d.ret = true;
-      return d;
-    case 0xC6:
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0xC7:
-      if (modrm() < 0) return {};
-      if (i + static_cast<size_t>(opsz ? 2 : 4) > n) return {};
-      i += static_cast<size_t>(opsz ? 2 : 4);
-      d.len = i;
-      return d;
-    case 0xC8:
-      if (i + 3 > n) return {};
-      i += 3;
-      d.len = i;
-      return d;
-    case 0xCC:
-      d.len = i;
-      return d;
-    case 0xCD:
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-
-    case 0xD0: case 0xD1: case 0xD2: case 0xD3:
-    case 0xD8: case 0xD9: case 0xDA: case 0xDB:
-    case 0xDC: case 0xDD: case 0xDE: case 0xDF:
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-
-    case 0xE0: case 0xE1: case 0xE2: case 0xE3:
-    case 0xE4: case 0xE5: case 0xE6: case 0xE7:
-      if (i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    case 0xE8: case 0xE9: {
-      if (i + 4 > n) return {};
-      const int32_t rel = s32(p + i);
-      i += 4;
-      d.len = i;
-      d.has_target = true;
-      d.target = static_cast<int64_t>(addr) + static_cast<int64_t>(d.len) + rel;
-      d.call = (op == 0xE8);
-      d.jump = (op == 0xE9);
-      d.uncond = d.jump;
-      return d;
-    }
-
-    case 0xF1: case 0xF4: case 0xF5:
-    case 0xF8: case 0xF9: case 0xFA: case 0xFB:
-    case 0xFC: case 0xFD:
-      d.len = i;
-      return d;
-
-    case 0xF6: case 0xF7: {
-      const size_t mp = i;
-      if (modrm() < 0) return {};
-      const uint8_t m = p[mp];
-      const int reg = (m >> 3) & 7;
-      if (reg <= 1) {
-        const int k = (op == 0xF6) ? 1 : (opsz ? 2 : 4);
-        if (i + static_cast<size_t>(k) > n) return {};
-        i += static_cast<size_t>(k);
-      }
-      d.len = i;
-      return d;
-    }
-
-    case 0xFE:
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-
-    case 0xFF: {
-      const size_t mp = i;
-      if (modrm() < 0) return {};
-      const uint8_t m = p[mp];
-      const int reg = (m >> 3) & 7;
-      if (reg == 2 || reg == 3) d.call = true;
-      if (reg == 4 || reg == 5) {
-        d.jump = true;
-        d.uncond = (reg == 4);
-      }
-      d.len = i;
-      return d;
-    }
-
-    default:
-      break;
-  }
-
-  if (op == 0x0F) {
-    if (i >= n) return {};
-    const uint8_t op2 = p[i++];
-
-    if (op2 >= 0x80 && op2 <= 0x8F) {
-      if (i + 4 > n) return {};
-      const int32_t rel = s32(p + i);
-      i += 4;
-      d.len = i;
-      d.jump = true;
-      d.uncond = false;
-      d.has_target = true;
-      d.target = static_cast<int64_t>(addr) + static_cast<int64_t>(d.len) + rel;
-      return d;
-    }
-
-    const bool no_operand =
-        op2 == 0x05 || op2 == 0x06 || op2 == 0x07 || op2 == 0x08 ||
-        op2 == 0x09 || op2 == 0x0B || op2 == 0x0E || op2 == 0x30 ||
-        op2 == 0x31 || op2 == 0x32 || op2 == 0x33 || op2 == 0x34 ||
-        op2 == 0x35 || op2 == 0x37 || op2 == 0x77 || op2 == 0xA2 ||
-        op2 == 0xAA;
-    if (no_operand) {
-      d.len = i;
-      return d;
-    }
-
-    if (op2 == 0x0F) {
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    }
-    if (op2 == 0x38) {
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-    }
-    if (op2 == 0x3A) {
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    }
-    if (op2 == 0xBA || op2 == 0xA4 || op2 == 0xAC) {
-      if (modrm() < 0 || i + 1 > n) return {};
-      i += 1;
-      d.len = i;
-      return d;
-    }
-
-    const bool has_modrm =
-        (op2 >= 0x10 && op2 <= 0x1F) || (op2 >= 0x28 && op2 <= 0x2F) ||
-        (op2 >= 0x40 && op2 <= 0x4F) || (op2 >= 0x50 && op2 <= 0x7F) ||
-        (op2 >= 0x90 && op2 <= 0x9F) || op2 == 0x01 || op2 == 0xAE ||
-        op2 == 0xAF || op2 == 0xB0 || op2 == 0xB1 || op2 == 0xB6 ||
-        op2 == 0xB7 || op2 == 0xBE || op2 == 0xBF || op2 == 0xA3 ||
-        op2 == 0xAB || op2 == 0xB3 || op2 == 0xBB || op2 == 0xC0 ||
-        op2 == 0xC1 || op2 == 0xC7;
-    if (has_modrm) {
-      if (modrm() < 0) return {};
-      d.len = i;
-      return d;
-    }
-
-    return {};
-  }
-
-  return {};
 }
 
-// ------------------------------------------------------------
-// analysis
-// ------------------------------------------------------------
-struct Xref {
-  uint64_t from = 0;
-  uint64_t to = 0;
-  bool call = false;
-};
-
-struct BlockOut {
-  uint64_t start = 0;
-  uint64_t end = 0;
-  std::vector<uint64_t> succ;
-};
-
-struct FuncOut {
-  uint64_t start = 0;
-  std::string name;
-  std::vector<BlockOut> blocks;
-};
-
-struct Analysis {
-  std::set<uint64_t> functions;
-  std::vector<Xref> xrefs;
-  std::vector<FuncOut> funcs;
-};
-
-static const Section* find_exec_section(const BinaryInfo& bi, uint64_t addr) {
-  for (const Section& s : bi.sections) {
-    if (!s.executable() || s.data.empty()) continue;
-    if (addr >= s.vaddr && addr < s.vaddr + s.data.size()) return &s;
-  }
-  return nullptr;
-}
-
-static Analysis analyze(const BinaryInfo& bi) {
-  Analysis a;
-  if (bi.entry) a.functions.insert(bi.entry);
-  for (const Export& e : bi.exports) a.functions.insert(e.addr);
-
-  // linear sweep: collect direct xrefs and call targets
-  for (const Section& sec : bi.sections) {
-    if (!sec.executable() || sec.data.empty()) continue;
-    size_t pos = 0;
-    while (pos < sec.data.size()) {
-      Decoded d = decode_one(sec.data.data() + pos, sec.data.size() - pos,
-                             sec.vaddr + pos);
-      if (d.len == 0 || pos + d.len > sec.data.size()) {
-        ++pos;
-        continue;
-      }
-      if (d.has_target) {
-        const uint64_t target = static_cast<uint64_t>(d.target);
-        if (d.call) {
-          a.xrefs.push_back(Xref{sec.vaddr + pos, target, true});
-          a.functions.insert(target);
-        } else if (d.jump) {
-          a.xrefs.push_back(Xref{sec.vaddr + pos, target, false});
+void hex_dump(const Binary& bin, size_t offset, size_t length, size_t base_addr = 0) {
+    const size_t end = std::min(offset + length, bin.size());
+    for (size_t i = offset; i < end; i += 16) {
+        printf("%08zX  ", base_addr + (i - offset));
+        for (size_t j = 0; j < 16; ++j) {
+            if (i + j < end) printf("%02X ", bin.data[i + j]);
+            else printf("   ");
         }
-      }
-      pos += d.len;
-    }
-  }
-
-  std::map<uint64_t, std::string> names;
-  for (const Export& e : bi.exports) names[e.addr] = e.name;
-
-  size_t emitted = 0;
-  for (uint64_t start : a.functions) {
-    if (emitted++ >= 4096) break;
-    const Section* sec = find_exec_section(bi, start);
-    if (!sec) continue;
-
-    std::vector<Decoded> ins;
-    size_t off = static_cast<size_t>(start - sec->vaddr);
-    const size_t limit = std::min(sec->data.size(), off + 0x100000);
-    while (off < limit && ins.size() < 8192) {
-      Decoded d = decode_one(sec->data.data() + off, limit - off,
-                             sec->vaddr + off);
-      if (d.len == 0 || off + d.len > limit) break;
-      ins.push_back(d);
-      off += d.len;
-      if (d.ret || d.uncond) break;
-    }
-    if (ins.empty()) continue;
-
-    std::set<size_t> leaders{0};
-    std::unordered_map<uint64_t, size_t> by_addr;
-    for (size_t i = 0; i < ins.size(); ++i) by_addr[ins[i].addr] = i;
-
-    for (size_t i = 0; i < ins.size(); ++i) {
-      if (ins[i].has_target) {
-        auto it = by_addr.find(static_cast<uint64_t>(ins[i].target));
-        if (it != by_addr.end() && it->second > i) leaders.insert(it->second);
-      }
-      if ((ins[i].jump || ins[i].ret) && i + 1 < ins.size())
-        leaders.insert(i + 1);
-    }
-
-    std::vector<size_t> ls(leaders.begin(), leaders.end());
-    FuncOut fo;
-    fo.start = start;
-    auto nit = names.find(start);
-    fo.name = (nit != names.end()) ? nit->second : "";
-
-    for (size_t k = 0; k < ls.size(); ++k) {
-      const size_t begin = ls[k];
-      const size_t end = (k + 1 < ls.size()) ? ls[k + 1] : ins.size();
-      if (begin >= end) continue;
-      BlockOut bo;
-      bo.start = ins[begin].addr;
-      bo.end = ins[end - 1].addr + ins[end - 1].len;
-
-      const Decoded& last = ins[end - 1];
-      if (!last.ret) {
-        if (last.uncond && last.has_target) {
-          bo.succ.push_back(static_cast<uint64_t>(last.target));
-        } else if (last.jump) {
-          if (last.has_target) bo.succ.push_back(static_cast<uint64_t>(last.target));
-          if (end < ins.size()) bo.succ.push_back(ins[end].addr);
-        } else if (end < ins.size()) {
-          bo.succ.push_back(ins[end].addr);
+        printf(" ");
+        for (size_t j = 0; j < 16 && i + j < end; ++j) {
+            uint8_t c = bin.data[i + j];
+            putchar((c >= 32 && c < 127) ? c : '.');
         }
-      }
-      fo.blocks.push_back(std::move(bo));
+        putchar('\n');
     }
-    if (!fo.blocks.empty()) a.funcs.push_back(std::move(fo));
-  }
-
-  return a;
 }
 
-// ------------------------------------------------------------
-// strings
-// ------------------------------------------------------------
-static std::vector<std::string> extract_strings(const BinaryInfo& bi,
-                                                size_t minlen = 4,
-                                                size_t max_items = 20000) {
-  std::vector<std::string> out;
-  std::unordered_set<std::string> seen;
-  for (const Section& sec : bi.sections) {
-    if (sec.data.empty()) continue;
-    size_t i = 0;
-    while (i < sec.data.size() && out.size() < max_items) {
-      const unsigned char c = sec.data[i];
-      if (!std::isprint(c)) {
-        ++i;
-        continue;
-      }
-      const size_t start = i;
-      while (i < sec.data.size() && std::isprint(sec.data[i]) &&
-             i - start < 4096)
-        ++i;
-      if (i - start >= minlen) {
-        std::string s(reinterpret_cast<const char*>(sec.data.data() + start),
-                      i - start);
-        if (seen.insert(s).second) out.push_back(std::move(s));
-      }
+// Minimal linear x86/x64 disassembler (common opcodes only, educational)
+struct DisasmResult {
+    size_t length;
+    std::string text;
+};
+
+DisasmResult disassemble_one(const uint8_t* code, size_t max_len, bool is64) {
+    if (max_len == 0) return {0, "???"};
+
+    // Very small table of common single-byte / simple instructions
+    static const char* const one_byte[] = {
+        /*00*/ "add [rm], r", "add [rm], r", "add r, [rm]", "add r, [rm]", "add al, imm8", "add eax, imm32", "push es", "pop es",
+        /*08*/ "or [rm], r", "or [rm], r", "or r, [rm]", "or r, [rm]", "or al, imm8", "or eax, imm32", "push cs", "???",
+        /*10*/ "adc [rm], r", "adc [rm], r", "adc r, [rm]", "adc r, [rm]", "adc al, imm8", "adc eax, imm32", "push ss", "pop ss",
+        /*18*/ "sbb [rm], r", "sbb [rm], r", "sbb r, [rm]", "sbb r, [rm]", "sbb al, imm8", "sbb eax, imm32", "push ds", "pop ds",
+        /*20*/ "and [rm], r", "and [rm], r", "and r, [rm]", "and r, [rm]", "and al, imm8", "and eax, imm32", "es:", "daa",
+        /*28*/ "sub [rm], r", "sub [rm], r", "sub r, [rm]", "sub r, [rm]", "sub al, imm8", "sub eax, imm32", "cs:", "das",
+        /*30*/ "xor [rm], r", "xor [rm], r", "xor r, [rm]", "xor r, [rm]", "xor al, imm8", "xor eax, imm32", "ss:", "aaa",
+        /*38*/ "cmp [rm], r", "cmp [rm], r", "cmp r, [rm]", "cmp r, [rm]", "cmp al, imm8", "cmp eax, imm32", "ds:", "aas",
+        /*40*/ "inc eax", "inc ecx", "inc edx", "inc ebx", "inc esp", "inc ebp", "inc esi", "inc edi",
+        /*48*/ "dec eax", "dec ecx", "dec edx", "dec ebx", "dec esp", "dec ebp", "dec esi", "dec edi",
+        /*50*/ "push eax", "push ecx", "push edx", "push ebx", "push esp", "push ebp", "push esi", "push edi",
+        /*58*/ "pop eax", "pop ecx", "pop edx", "pop ebx", "pop esp", "pop ebp", "pop esi", "pop edi",
+        /*60*/ "pusha", "popa", "bound", "arpl", "fs:", "gs:", "opsize", "adsize",
+        /*68*/ "push imm32", "imul r, [rm], imm32", "push imm8", "imul r, [rm], imm8", "insb", "insd", "outsb", "outsd",
+        /*70*/ "jo", "jno", "jb", "jae", "je", "jne", "jbe", "ja",
+        /*78*/ "js", "jns", "jp", "jnp", "jl", "jge", "jle", "jg",
+        /*80*/ "alu [rm], imm8", "alu [rm], imm32", "alu [rm], imm8", "alu [rm], imm8", "test [rm], r", "test [rm], r", "xchg [rm], r", "xchg [rm], r",
+        /*88*/ "mov [rm], r", "mov [rm], r", "mov r, [rm]", "mov r, [rm]", "mov [rm], sreg", "lea r, [rm]", "mov sreg, [rm]", "pop [rm]",
+        /*90*/ "nop", "xchg ecx, eax", "xchg edx, eax", "xchg ebx, eax", "xchg esp, eax", "xchg ebp, eax", "xchg esi, eax", "xchg edi, eax",
+        /*98*/ "cwde", "cdq", "call far", "wait", "pushf", "popf", "sahf", "lahf",
+        /*A0*/ "mov al, [imm]", "mov eax, [imm]", "mov [imm], al", "mov [imm], eax", "movsb", "movsd", "cmpsb", "cmpsd",
+        /*A8*/ "test al, imm8", "test eax, imm32", "stosb", "stosd", "lodsb", "lodsd", "scasb", "scasd",
+        /*B0*/ "mov al, imm8", "mov cl, imm8", "mov dl, imm8", "mov bl, imm8", "mov ah, imm8", "mov ch, imm8", "mov dh, imm8", "mov bh, imm8",
+        /*B8*/ "mov eax, imm32", "mov ecx, imm32", "mov edx, imm32", "mov ebx, imm32", "mov esp, imm32", "mov ebp, imm32", "mov esi, imm32", "mov edi, imm32",
+        /*C0*/ "shift [rm], imm8", "shift [rm], imm8", "ret imm16", "ret", "les", "lds", "mov [rm], imm8", "mov [rm], imm32",
+        /*C8*/ "enter", "leave", "retf imm16", "retf", "int3", "int imm8", "into", "iret",
+        /*D0*/ "shift [rm], 1", "shift [rm], 1", "shift [rm], cl", "shift [rm], cl", "aam", "aad", "salc", "xlat",
+        /*D8*/ "fpu", "fpu", "fpu", "fpu", "fpu", "fpu", "fpu", "fpu",
+        /*E0*/ "loopne", "loope", "loop", "jcxz", "in al, imm8", "in eax, imm8", "out imm8, al", "out imm8, eax",
+        /*E8*/ "call rel32", "jmp rel32", "jmp far", "jmp rel8", "in al, dx", "in eax, dx", "out dx, al", "out dx, eax",
+        /*F0*/ "lock", "int1", "repne", "rep", "hlt", "cmc", "alu [rm]", "alu [rm]",
+        /*F8*/ "clc", "stc", "cli", "sti", "cld", "std", "inc/dec [rm]", "push/pop/call/jmp [rm]"
+    };
+
+    uint8_t op = code[0];
+    size_t len = 1;
+    std::string text;
+
+    // REX prefix (64-bit)
+    if (is64 && (op >= 0x40 && op <= 0x4F)) {
+        text = "rex ";
+        if (max_len < 2) return {1, text + "???"};
+        op = code[1];
+        len = 2;
     }
-  }
-  return out;
+
+    // Simple one-byte
+    if (op < 0x100) {
+        text += one_byte[op];
+        // Estimate extra bytes for immediates / ModRM (very rough)
+        if (op == 0xE8 || op == 0xE9) len += 4;          // call/jmp rel32
+        else if (op == 0xEB || (op >= 0x70 && op <= 0x7F)) len += 1; // jmp/jcc rel8
+        else if (op == 0x68) len += 4;                   // push imm32
+        else if (op == 0x6A) len += 1;                   // push imm8
+        else if (op >= 0xB0 && op <= 0xB7) len += 1;     // mov r8, imm8
+        else if (op >= 0xB8 && op <= 0xBF) len += is64 ? 8 : 4; // mov r32/64, imm
+        else if (op == 0xC2 || op == 0xCA) len += 2;     // ret imm16
+        else if (op == 0xCD) len += 1;                   // int imm8
+        else if ((op & 0xFC) == 0x80) len += 1 + 1;      // alu rm, imm (ModRM + imm)
+        else if (op == 0xFF || op == 0xFE || (op >= 0x80 && op <= 0x8F)) len += 1; // ModRM
+    } else {
+        text = "db";
+    }
+
+    if (len > max_len) len = max_len;
+    return {len, text};
 }
 
-// ------------------------------------------------------------
-// output
-// ------------------------------------------------------------
-static void hex(std::ostream& os, uint64_t v) {
-  os << "0x" << std::hex << v << std::dec;
+void disassemble_linear(const Binary& bin, size_t offset, size_t length, uint64_t base_va, bool is64) {
+    size_t end = std::min(offset + length, bin.size());
+    size_t pos = offset;
+    while (pos < end) {
+        auto res = disassemble_one(bin.ptr(pos), end - pos, is64);
+        printf("%016llX  ", (unsigned long long)(base_va + (pos - offset)));
+        for (size_t i = 0; i < res.length; ++i) printf("%02X", bin.data[pos + i]);
+        for (size_t i = res.length; i < 8; ++i) printf("  ");
+        printf("  %s\n", res.text.c_str());
+        pos += res.length ? res.length : 1;
+    }
 }
 
-static void print_summary(const BinaryInfo& bi) {
-  std::cout << "format: " << bi.format << "\n";
-  std::cout << "arch:   " << bi.arch << "\n";
-  std::cout << "entry:  "; hex(std::cout, bi.entry); std::cout << "\n";
-  if (bi.image_base) {
-    std::cout << "image:  "; hex(std::cout, bi.image_base); std::cout << "\n";
-  }
-  std::cout << "\nsections:\n";
-  for (const Section& s : bi.sections) {
-    std::cout << "  " << std::left << std::setw(22) << s.name << " ";
-    hex(std::cout, s.vaddr);
-    std::cout << " size=";
-    hex(std::cout, s.size);
-    std::cout << " entropy=" << std::fixed << std::setprecision(3) << s.entropy;
-    if (s.executable()) std::cout << " [exec]";
-    std::cout << "\n";
-  }
-  if (!bi.imports.empty()) {
-    std::cout << "\nimports:\n";
-    for (const Import& im : bi.imports) {
-      std::cout << "  ";
-      if (!im.library.empty()) std::cout << im.library << "!";
-      std::cout << im.name << "\n";
+void analyze_pe(const Binary& bin) {
+    IMAGE_DOS_HEADER dos;
+    if (!bin.read(0, dos) || dos.e_magic != IMAGE_DOS_SIGNATURE) {
+        printf("[!] Not a valid PE (bad MZ)\n");
+        return;
     }
-  }
-  if (!bi.exports.empty()) {
-    std::cout << "\nexports:\n";
-    for (const Export& ex : bi.exports) {
-      std::cout << "  "; hex(std::cout, ex.addr);
-      std::cout << " " << ex.name << "\n";
-    }
-  }
-}
+    printf("[+] DOS Header OK, e_lfanew = 0x%X\n", dos.e_lfanew);
 
-static void print_disasm(const BinaryInfo& bi) {
-  for (const Section& sec : bi.sections) {
-    if (!sec.executable() || sec.data.empty()) continue;
-    std::cout << "\n; " << sec.name << " @ ";
-    hex(std::cout, sec.vaddr);
-    std::cout << "\n";
-    size_t pos = 0;
-    size_t count = 0;
-    while (pos < sec.data.size() && count++ < 500000) {
-      const Decoded d = decode_one(sec.data.data() + pos,
-                                   sec.data.size() - pos, sec.vaddr + pos);
-      if (d.len == 0) {
-        std::cout << "  "; hex(std::cout, sec.vaddr + pos);
-        std::cout << "  db 0x" << std::hex
-                  << static_cast<unsigned>(sec.data[pos]) << std::dec << "\n";
-        ++pos;
-        continue;
-      }
-      std::cout << "  "; hex(std::cout, d.addr);
-      std::cout << "  ";
-      for (size_t i = 0; i < d.len; ++i) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0')
-                  << static_cast<unsigned>(sec.data[pos + i]) << std::dec
-                  << std::setfill(' ');
-      }
-      for (size_t i = d.len; i < 12; ++i) std::cout << "   ";
-      if (d.call) std::cout << " call";
-      else if (d.ret) std::cout << " ret";
-      else if (d.jump) std::cout << (d.uncond ? " jmp" : " jcc");
-      if (d.has_target) {
-        std::cout << " -> ";
-        hex(std::cout, static_cast<uint64_t>(d.target));
-      }
-      std::cout << "\n";
-      pos += d.len;
+    if (!bin.valid(dos.e_lfanew, 4)) {
+        printf("[!] Invalid e_lfanew\n");
+        return;
     }
-  }
-}
 
-static void print_cfg(const Analysis& a) {
-  std::cout << "\nfunctions/blocks:\n";
-  for (const FuncOut& f : a.funcs) {
-    std::cout << "\nfunction "; hex(std::cout, f.start);
-    if (!f.name.empty()) std::cout << " " << f.name;
-    std::cout << "\n";
-    for (const BlockOut& b : f.blocks) {
-      std::cout << "  block "; hex(std::cout, b.start);
-      std::cout << " - "; hex(std::cout, b.end);
-      if (b.succ.empty()) {
-        std::cout << " (exit)\n";
-      } else {
-        std::cout << " ->";
-        for (uint64_t s : b.succ) {
-          std::cout << " "; hex(std::cout, s);
+    uint32_t sig = 0;
+    bin.read(dos.e_lfanew, sig);
+    if (sig != IMAGE_NT_SIGNATURE) {
+        printf("[!] Bad PE signature\n");
+        return;
+    }
+
+    IMAGE_FILE_HEADER fh;
+    if (!bin.read(dos.e_lfanew + 4, fh)) {
+        printf("[!] Cannot read FileHeader\n");
+        return;
+    }
+
+    printf("\n=== COFF File Header ===\n");
+    printf("Machine            : 0x%04X ", fh.Machine);
+    if (fh.Machine == IMAGE_FILE_MACHINE_I386) printf("(i386)\n");
+    else if (fh.Machine == IMAGE_FILE_MACHINE_AMD64) printf("(AMD64)\n");
+    else printf("(unknown)\n");
+    printf("NumberOfSections   : %u\n", fh.NumberOfSections);
+    printf("TimeDateStamp      : 0x%08X\n", fh.TimeDateStamp);
+    printf("Characteristics    : 0x%04X\n", fh.Characteristics);
+    printf("SizeOfOptionalHeader: %u\n", fh.SizeOfOptionalHeader);
+
+    bool is64 = false;
+    uint16_t opt_magic = 0;
+    bin.read(dos.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER), opt_magic);
+    is64 = (opt_magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
+
+    uint32_t entry = 0;
+    uint64_t image_base = 0;
+    uint32_t size_of_image = 0;
+    uint32_t size_of_headers = 0;
+    IMAGE_DATA_DIRECTORY data_dir[16] = {};
+    uint32_t num_rva = 0;
+
+    if (is64) {
+        IMAGE_NT_HEADERS64 nt;
+        if (!bin.read(dos.e_lfanew, nt)) return;
+        printf("\n=== Optional Header (PE32+) ===\n");
+        printf("Magic              : 0x%04X (PE32+)\n", nt.OptionalHeader.Magic);
+        printf("AddressOfEntryPoint: 0x%08X\n", nt.OptionalHeader.AddressOfEntryPoint);
+        printf("ImageBase          : 0x%016llX\n", (unsigned long long)nt.OptionalHeader.ImageBase);
+        printf("SectionAlignment   : 0x%X\n", nt.OptionalHeader.SectionAlignment);
+        printf("FileAlignment      : 0x%X\n", nt.OptionalHeader.FileAlignment);
+        printf("SizeOfImage        : 0x%X\n", nt.OptionalHeader.SizeOfImage);
+        printf("SizeOfHeaders      : 0x%X\n", nt.OptionalHeader.SizeOfHeaders);
+        printf("Subsystem          : %u\n", nt.OptionalHeader.Subsystem);
+        printf("DllCharacteristics : 0x%04X\n", nt.OptionalHeader.DllCharacteristics);
+        entry = nt.OptionalHeader.AddressOfEntryPoint;
+        image_base = nt.OptionalHeader.ImageBase;
+        size_of_image = nt.OptionalHeader.SizeOfImage;
+        size_of_headers = nt.OptionalHeader.SizeOfHeaders;
+        num_rva = nt.OptionalHeader.NumberOfRvaAndSizes;
+        std::memcpy(data_dir, nt.OptionalHeader.DataDirectory, sizeof(data_dir));
+    } else {
+        IMAGE_NT_HEADERS32 nt;
+        if (!bin.read(dos.e_lfanew, nt)) return;
+        printf("\n=== Optional Header (PE32) ===\n");
+        printf("Magic              : 0x%04X (PE32)\n", nt.OptionalHeader.Magic);
+        printf("AddressOfEntryPoint: 0x%08X\n", nt.OptionalHeader.AddressOfEntryPoint);
+        printf("ImageBase          : 0x%08X\n", nt.OptionalHeader.ImageBase);
+        printf("SectionAlignment   : 0x%X\n", nt.OptionalHeader.SectionAlignment);
+        printf("FileAlignment      : 0x%X\n", nt.OptionalHeader.FileAlignment);
+        printf("SizeOfImage        : 0x%X\n", nt.OptionalHeader.SizeOfImage);
+        printf("SizeOfHeaders      : 0x%X\n", nt.OptionalHeader.SizeOfHeaders);
+        printf("Subsystem          : %u\n", nt.OptionalHeader.Subsystem);
+        printf("DllCharacteristics : 0x%04X\n", nt.OptionalHeader.DllCharacteristics);
+        entry = nt.OptionalHeader.AddressOfEntryPoint;
+        image_base = nt.OptionalHeader.ImageBase;
+        size_of_image = nt.OptionalHeader.SizeOfImage;
+        size_of_headers = nt.OptionalHeader.SizeOfHeaders;
+        num_rva = nt.OptionalHeader.NumberOfRvaAndSizes;
+        std::memcpy(data_dir, nt.OptionalHeader.DataDirectory, sizeof(data_dir));
+    }
+
+    // Sections
+    size_t section_off = dos.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + fh.SizeOfOptionalHeader;
+    std::vector<IMAGE_SECTION_HEADER> sections(fh.NumberOfSections);
+    printf("\n=== Sections ===\n");
+    printf("%-8s %10s %10s %10s %10s %10s\n", "Name", "VirtSize", "VirtAddr", "RawSize", "RawPtr", "Characteristics");
+    for (uint16_t i = 0; i < fh.NumberOfSections; ++i) {
+        if (!bin.read(section_off + i * sizeof(IMAGE_SECTION_HEADER), sections[i])) break;
+        char name[9] = {};
+        std::memcpy(name, sections[i].Name, 8);
+        printf("%-8s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X\n",
+               name, sections[i].VirtualSize, sections[i].VirtualAddress,
+               sections[i].SizeOfRawData, sections[i].PointerToRawData, sections[i].Characteristics);
+    }
+
+    // Imports
+    if (num_rva > IMAGE_DIRECTORY_ENTRY_IMPORT && data_dir[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress) {
+        uint32_t import_rva = data_dir[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+        uint32_t import_off = rva_to_offset(sections, import_rva);
+        printf("\n=== Imports ===\n");
+        if (import_off) {
+            for (int i = 0; ; ++i) {
+                IMAGE_IMPORT_DESCRIPTOR desc;
+                if (!bin.read(import_off + i * sizeof(desc), desc) || desc.Name == 0) break;
+                uint32_t name_off = rva_to_offset(sections, desc.Name);
+                std::string dll = bin.read_string(name_off);
+                printf("  %s\n", dll.c_str());
+            }
         }
-        std::cout << "\n";
-      }
     }
-  }
-  std::cout << "\ncall/jump xrefs:\n";
-  size_t shown = 0;
-  for (const Xref& x : a.xrefs) {
-    if (shown++ >= 20000) break;
-    std::cout << "  "; hex(std::cout, x.from);
-    std::cout << (x.call ? " call " : " jump ");
-    hex(std::cout, x.to);
-    std::cout << "\n";
-  }
+
+    // Exports
+    if (num_rva > IMAGE_DIRECTORY_ENTRY_EXPORT && data_dir[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress) {
+        uint32_t export_rva = data_dir[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+        uint32_t export_off = rva_to_offset(sections, export_rva);
+        printf("\n=== Exports ===\n");
+        if (export_off) {
+            IMAGE_EXPORT_DIRECTORY exp;
+            if (bin.read(export_off, exp)) {
+                uint32_t name_off = rva_to_offset(sections, exp.Name);
+                printf("  Module: %s\n", bin.read_string(name_off).c_str());
+                printf("  NumberOfFunctions: %u\n", exp.NumberOfFunctions);
+                printf("  NumberOfNames    : %u\n", exp.NumberOfNames);
+                uint32_t names_off = rva_to_offset(sections, exp.AddressOfNames);
+                for (uint32_t i = 0; i < exp.NumberOfNames && i < 64; ++i) {
+                    uint32_t name_rva = 0;
+                    if (bin.read(names_off + i * 4, name_rva)) {
+                        uint32_t no = rva_to_offset(sections, name_rva);
+                        printf("    %s\n", bin.read_string(no).c_str());
+                    }
+                }
+                if (exp.NumberOfNames > 64) printf("    ... (%u more)\n", exp.NumberOfNames - 64);
+            }
+        }
+    }
+
+    // Entry point disassembly
+    if (entry) {
+        uint32_t ep_off = rva_to_offset(sections, entry);
+        if (ep_off && bin.valid(ep_off, 64)) {
+            printf("\n=== Entry Point Disassembly (first 64 bytes) ===\n");
+            disassemble_linear(bin, ep_off, 64, image_base + entry, is64);
+        }
+    }
+
+    // .text section dump + disasm if present
+    for (const auto& s : sections) {
+        char name[9] = {};
+        std::memcpy(name, s.Name, 8);
+        if (std::string(name).find(".text") != std::string::npos || std::string(name).find("CODE") != std::string::npos) {
+            printf("\n=== .text / CODE section (first 128 bytes hex) ===\n");
+            hex_dump(bin, s.PointerToRawData, std::min<size_t>(128, s.SizeOfRawData), image_base + s.VirtualAddress);
+            printf("\n=== Linear disassembly of start of .text ===\n");
+            disassemble_linear(bin, s.PointerToRawData, std::min<size_t>(128, s.SizeOfRawData),
+                               image_base + s.VirtualAddress, is64);
+            break;
+        }
+    }
 }
 
-static void usage(const char* argv0) {
-  std::cout << "usage: " << argv0 << " <binary> [--disasm] [--cfg] [--strings]\n";
+void analyze_raw(const Binary& bin) {
+    printf("[*] Treating as raw binary\n");
+    printf("Size: %zu bytes\n\n", bin.size());
+    printf("=== Hex dump (first 256 bytes) ===\n");
+    hex_dump(bin, 0, std::min<size_t>(256, bin.size()));
+    printf("\n=== Linear x86 disassembly attempt (first 128 bytes) ===\n");
+    disassemble_linear(bin, 0, std::min<size_t>(128, bin.size()), 0, true);
 }
 
 int main(int argc, char** argv) {
-  if (argc < 2) {
-    usage(argv[0]);
-    return 1;
-  }
-
-  std::string path;
-  bool want_disasm = false;
-  bool want_cfg = false;
-  bool want_strings = false;
-  for (int i = 1; i < argc; ++i) {
-    const std::string a = argv[i];
-    if (a == "--disasm") want_disasm = true;
-    else if (a == "--cfg") want_cfg = true;
-    else if (a == "--strings") want_strings = true;
-    else if (a == "--help" || a == "-h") {
-      usage(argv[0]);
-      return 0;
-    } else if (!a.empty() && a[0] == '-') {
-      std::cerr << "unknown option: " << a << "\n";
-      return 1;
-    } else if (path.empty()) {
-      path = a;
+    if (argc < 2) {
+        printf("Usage: %s <file.exe|file.dll|file.bin>\n", argv[0]);
+        return 1;
     }
-  }
 
-  if (path.empty()) {
-    usage(argv[0]);
-    return 1;
-  }
+    std::ifstream f(argv[1], std::ios::binary);
+    if (!f) {
+        printf("Cannot open %s\n", argv[1]);
+        return 1;
+    }
 
-  const std::vector<uint8_t> raw = read_file(path);
-  if (raw.empty()) {
-    std::cerr << "error: cannot read file\n";
-    return 1;
-  }
+    Binary bin;
+    f.seekg(0, std::ios::end);
+    size_t sz = f.tellg();
+    f.seekg(0, std::ios::beg);
+    bin.data.resize(sz);
+    f.read(reinterpret_cast<char*>(bin.data.data()), sz);
+    f.close();
 
-  BinaryInfo bi;
-  bi.path = path;
-  bool ok = false;
-  if (raw.size() >= 4 && raw[0] == 0x7f && raw[1] == 'E' && raw[2] == 'L' &&
-      raw[3] == 'F') {
-    ok = parse_elf(raw, bi);
-  } else if (raw.size() >= 2 && raw[0] == 'M' && raw[1] == 'Z') {
-    ok = parse_pe(raw, bi);
-  }
-  if (!ok) {
-    std::cerr << "error: unsupported or malformed binary\n";
-    return 1;
-  }
+    printf("=== RE Tool (single-file) ===\n");
+    printf("File: %s  Size: %zu\n\n", argv[1], bin.size());
 
-  print_summary(bi);
+    if (bin.size() >= 2 && bin.data[0] == 'M' && bin.data[1] == 'Z') {
+        analyze_pe(bin);
+    } else {
+        analyze_raw(bin);
+    }
 
-  if (want_strings) {
-    const auto ss = extract_strings(bi);
-    std::cout << "\nstrings (" << ss.size() << "):\n";
-    for (const std::string& s : ss) std::cout << "  " << s << "\n";
-  }
-  if (want_disasm) print_disasm(bi);
-  if (want_cfg) print_cfg(analyze(bi));
-
-  return 0;
+    return 0;
 }
