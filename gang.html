@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RE Studio - Responsive Binary Analysis</title>
+  <style>
+    :root {
+      --bg-main: #121212;
+      --bg-panel: #1e1e1e;
+      --bg-header: #2d2d2d;
+      --border: #333;
+      --accent: #00bcd4;
+      --text-main: #d4d4d4;
+      --text-muted: #858585;
+      --font-code: 'Consolas', 'Fira Code', monospace;
+      --font-ui: 'Segoe UI', Tahoma, sans-serif;
+      --panel-yellow: #f4f88a;
+      --panel-pink: #fca0e8;
+      --panel-cyan: #8cfce1;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      background: var(--bg-header);
+      padding: 0 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      min-height: 38px;
+      font-size: 13px;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .menu-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .menu-item {
+      position: relative;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 3px;
+      user-select: none;
+    }
+    .menu-item:hover, .menu-item.open { background: #444; }
+    .dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      min-width: 180px;
+      z-index: 200;
+      flex-direction: column;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      padding: 4px 0;
+    }
+    .menu-item:hover .dropdown,
+    .menu-item.open .dropdown { display: flex; }
+    .dropdown a {
+      padding: 8px 14px;
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .dropdown a:hover { background: var(--accent); color: #000; }
+    .dropdown .danger { color: #ff6b6b; }
+
+    /* Workspace Grid */
+    .workspace {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr) 320px;
+      grid-template-rows: minmax(0, 1fr) 165px;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar */
+    .sidebar-left {
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: var(--bg-header);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tree-view {
+      padding: 10px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      overflow-y: auto;
+      flex: 1;
+    }
+    .tree-item {
+      padding: 3px 4px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      word-break: break-word;
+    }
+    .tree-item:hover { background: #2c2c2c; }
+    .tree-folder { color: #dcb67a; font-weight: bold; margin-top: 6px; }
+    .tree-folder:first-child { margin-top: 0; }
+    .tree-sub { padding-left: 18px; color: var(--text-main); font-size: 11px; }
+
+    /* Center Area */
+    .center-area {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-main);
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .tab-bar {
+      background: var(--bg-header);
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      height: 35px;
+      align-items: flex-end;
+      padding: 0 10px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 6px 16px;
+      background: #252526;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      margin-right: 2px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .tab.active {
+      background: var(--bg-main);
+      color: var(--text-main);
+      border-top: 2px solid var(--accent);
+    }
+    .content-view {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      position: relative;
+      font-family: var(--font-code);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 10px;
+    }
+
+    /* Dropzone */
+    .dropzone {
+      position: absolute;
+      inset: 16px;
+      border: 2px dashed #444;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 16px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 8px;
+      transition: 0.2s;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0, 188, 212, 0.05);
+    }
+
+    /* Disassembly Lines */
+    .line { display: flex; white-space: pre; min-width: max-content; }
+    .line:hover { background: #2a2d2e; }
+    .line.patched-line { background: rgba(76, 175, 80, 0.14); }
+    .addr { color: #569cd6; width: 115px; flex-shrink: 0; }
+    .bytes { color: #b5cea8; width: 210px; flex-shrink: 0; }
+    .asm { color: #d4d4d4; }
+    .asm .mnemonic { color: #c586c0; font-weight: bold; }
+    .asm .register { color: #9cdcfe; }
+    .asm .number { color: #b5cea8; }
+    .patch-tag { color: #81c784; font-size: 11px; margin-left: 8px; }
+
+    /* Hex View */
+    .hex-row { display: flex; white-space: pre; margin-bottom: 2px; min-width: max-content; }
+    .hex-addr { color: #569cd6; width: 100px; flex-shrink: 0; }
+    .hex-data { color: #b5cea8; width: 390px; flex-shrink: 0; display: flex; gap: 6px; }
+    .hex-ascii { color: #ce9178; margin-left: 16px; }
+    .hex-byte { display: inline-block; width: 20px; text-align: center; border-radius: 2px; }
+    .hex-byte:hover { background: var(--accent); color: #000; cursor: pointer; }
+
+    /* Right Sidebar */
+    .sidebar-right {
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+      overflow-y: auto;
+    }
+    .color-panel { padding: 12px; color: #000; font-size: 13px; overflow-y: auto; }
+    .color-panel .section-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .panel-yellow { background: var(--panel-yellow); flex: 1; }
+    .panel-pink { background: var(--panel-pink); flex: 1; }
+    .panel-cyan { background: var(--panel-cyan); flex: 0.85; display: flex; flex-direction: column; gap: 6px; }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 5px;
+      border-bottom: 1px solid rgba(0,0,0,0.12);
+      padding-bottom: 3px;
+      font-family: var(--font-code);
+      font-size: 12px;
+    }
+    .info-row span:first-child { font-weight: bold; flex-shrink: 0; }
+    .info-row span:last-child { text-align: right; word-break: break-word; }
+
+    .action-btn {
+      padding: 8px 10px;
+      background: #222;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 12px;
+      transition: 0.15s;
+      text-align: center;
+    }
+    .action-btn:hover:not(:disabled) { background: #444; }
+    .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .action-btn.primary { background: #007c91; color: #fff; }
+    .action-btn.primary:hover:not(:disabled) { background: #0097a7; }
+
+    /* Bottom Console */
+    .console-panel {
+      grid-column: 1 / -1;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .console-output {
+      flex: 1;
+      padding: 8px 12px;
+      font-family: var(--font-code);
+      font-size: 12px;
+      overflow-y: auto;
+      color: #4ec9b0;
+    }
+    .console-line { margin-bottom: 2px; word-break: break-word; }
+    .console-line.error { color: #ff6b6b; }
+    .console-line.info { color: #64b5f6; }
+    .console-line.success { color: #81c784; }
+    .console-line.warning { color: #ffb74d; }
+
+    /* Responsive Breakpoints */
+    @media (max-width: 1024px) {
+      body { overflow: auto; height: auto; min-height: 100dvh; }
+      .workspace {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(320px, 50vh) auto minmax(150px, 180px);
+        overflow: visible;
+      }
+      .sidebar-left { display: none; }
+      .sidebar-right {
+        flex-direction: row;
+        flex-wrap: wrap;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        overflow: visible;
+      }
+      .color-panel { flex: 1 1 260px; min-height: 150px; }
+      .console-panel { min-height: 150px; }
+    }
+
+    @media (max-width: 600px) {
+      .workspace {
+        grid-template-rows: minmax(280px, 45vh) auto minmax(140px, 160px);
+      }
+      .color-panel { flex: 1 1 100%; }
+      .tab { padding: 6px 10px; font-size: 11px; }
+      .hex-data { width: auto; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Menu -->
+  <header class="top-bar">
+    <div class="menu-group">
+      <span style="font-weight: bold; color: var(--accent); margin-right: 12px; font-family: var(--font-code);">RE-STUDIO</span>
+      <div class="menu-item" id="menu-open">Open File</div>
+      <div class="menu-item" id="menu-clear-log">Clear Log</div>
+    </div>
+    <div class="menu-group">
+      <div class="menu-item" id="options-menu">
+        Options ▼
+        <div class="dropdown">
+          <a href="#" id="opt-fullscreen">Fullscreen</a>
+          <a href="#" id="opt-terminate" class="danger">Terminate Session</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="workspace">
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar-left">
+      <div class="panel-header">Structure</div>
+      <div class="tree-view" id="file-tree">
+        <div class="tree-item tree-folder">📁 Sections</div>
+        <div class="tree-item tree-sub">No binary loaded</div>
+        <div class="tree-item tree-folder">📁 Imports</div>
+        <div class="tree-item tree-sub">None</div>
+        <div class="tree-item tree-folder">📁 Anti-Debug Hits</div>
+        <div class="tree-item tree-sub">None</div>
+      </div>
+    </aside>
+
+    <!-- Center Area -->
+    <main class="center-area">
+      <div class="tab-bar">
+        <div class="tab active" data-tab="disasm">Disassembly</div>
+        <div class="tab" data-tab="hex">Hex View</div>
+        <div class="tab" data-tab="decomp">Pseudo-C</div>
+      </div>
+
+      <div class="content-view" id="view-disasm">
+        <div id="dropzone" class="dropzone">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          <p style="margin-top: 14px; font-family: var(--font-ui);">Click or Drag &amp; Drop a PE binary (.exe, .dll) to analyze</p>
+        </div>
+        <div id="disasm-output" style="display: none;"></div>
+      </div>
+
+      <div class="content-view" id="view-hex" style="display: none;">
+        <div id="hex-output" style="color: var(--text-muted);">Load a binary to inspect raw bytes.</div>
+      </div>
+
+      <div class="content-view" id="view-decomp" style="display: none;">
+        <div id="decomp-output" style="color: #d4d4d4; white-space: pre-wrap;">// Click "Generate Pseudo-C" after loading a binary.</div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar -->
+    <aside class="sidebar-right">
+      <div class="color-panel panel-yellow">
+        <div class="section-title">Code Details</div>
+        <div class="info-row"><span>Architecture:</span> <span id="info-arch">-</span></div>
+        <div class="info-row"><span>Base Address:</span> <span id="info-base">-</span></div>
+        <div class="info-row"><span>Entry Point:</span> <span id="info-entry">-</span></div>
+        <div class="info-row"><span>Pseudo-C:</span> <span id="info-decomp-status">Idle</span></div>
+        <div class="info-row" style="border:none;">
+          <span>Anti-Debug:</span>
+          <span id="info-antidebug" style="font-weight:bold; color: #555;">Not Analyzed</span>
+        </div>
+      </div>
+
+      <div class="color-panel panel-pink">
+        <div class="section-title">File Details</div>
+        <div class="info-row"><span>File Name:</span> <span id="info-filename">-</span></div>
+        <div class="info-row"><span>Format:</span> <span id="info-format">-</span></div>
+        <div class="info-row"><span>File Size:</span> <span id="info-size">-</span></div>
+        <div class="info-row"><span>Sections:</span> <span id="info-sections">-</span></div>
+        <div class="info-row"><span>Imports:</span> <span id="info-imports">-</span></div>
+      </div>
+
+      <div class="color-panel panel-cyan">
+        <div class="section-title">Options / Actions</div>
+        <button class="action-btn primary" id="btn-decompile" disabled>Generate Pseudo-C</button>
+        <button class="action-btn" id="btn-antidebug" disabled>Patch Anti-Debug Checks</button>
+        <button class="action-btn" id="btn-download-c" disabled>Download Pseudo-C</button>
+        <button class="action-btn" id="btn-download-bin" disabled>Download Patched Binary</button>
+      </div>
+    </aside>
+
+    <!-- Bottom Console -->
+    <section class="console-panel">
+      <div class="panel-header">Output Log</div>
+      <div class="console-output" id="console">
+        <div class="console-line info">[SYSTEM] Awaiting binary input...</div>
+      </div>
+    </section>
+
+  </div>
+
+  <input type="file" id="file-picker" accept=".exe,.dll,.bin" style="display:none;">
+
+  <!-- Capstone.js (WASM Global) -->
+  <script src="https://cdn.jsdelivr.net/npm/@alexaltea/capstone-js@5.0.9/dist/capstone.min.js"></script>
+
+  <!-- Main Application Script -->
+  <script type="module">
+    import * as PE from 'https://cdn.jsdelivr.net/npm/pe-library@2.0.1/+esm';
+
+    const ANTI_DEBUG_APIS = [
+      'IsDebuggerPresent',
+      'CheckRemoteDebuggerPresent',
+      'NtQueryInformationProcess',
+      'OutputDebugStringA',
+      'OutputDebugStringW',
+      'OutputDebugString',
+      'IsProcessorFeaturePresent',
+      'GetTickCount',
+      'GetTickCount64',
+      'QueryPerformanceCounter'
+    ];
+
+    const state = {
+      fileName: 'binary',
+      rawBuffer: null,       // Uint8Array of original file
+      patchedBuffer: null,    // Uint8Array after patching
+      pe: null,
+      is64Bit: false,
+      baseAddr: 0x400000,
+      entryRva: 0,
+      codeBytes: null,
+      codeBaseVa: 0,
+      codeFileOffset: 0,
+      instructions: [],
+      patchedOffsets: new Set(),
+      pseudoCode: '',
+      cs: null,
+      csMode: null,
+      detectedChecks: []
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function log(msg, type = 'info') {
+      const c = $('console');
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      c.appendChild(line);
+      c.scrollTop = c.scrollHeight;
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.content-view').forEach(v => {
+        v.style.display = v.id === `view-${tabId}` ? 'block' : 'none';
+      });
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    // Top bar & dropdown controls
+    $('menu-open').addEventListener('click', () => $('file-picker').click());
+    $('menu-clear-log').addEventListener('click', () => {
+      $('console').innerHTML = '';
+      log('Log cleared.', 'info');
+    });
+
+    const optMenu = $('options-menu');
+    optMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      optMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', () => optMenu.classList.remove('open'));
+
+    $('opt-fullscreen').addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    });
+
+    $('opt-terminate').addEventListener('click', (e) => {
+      e.preventDefault();
+      location.reload();
+    });
+
+    // File input handlers
+    const dropzone = $('dropzone');
+    const filePicker = $('file-picker');
+
+    dropzone.addEventListener('click', () => filePicker.click());
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length > 0) {
+        loadFile(e.dataTransfer.files[0]);
+      }
+    });
+    filePicker.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        loadFile(e.target.files[0]);
+      }
+      e.target.value = '';
+    });
+
+    async function ensureCapstone(is64Bit) {
+      if (typeof MCapstone === 'undefined') {
+        throw new Error('Capstone.js failed to load from CDN.');
+      }
+      if (!state.cs) {
+        log('Initializing Capstone.js (WASM)...', 'info');
+        state.cs = await MCapstone();
+      }
+      const mode = is64Bit ? state.cs.MODE_64 : state.cs.MODE_32;
+      if (state.csMode !== mode) {
+        if (state.disassembler) {
+          try { state.disassembler.close?.(); } catch (_) {}
+        }
+        state.disassembler = new state.cs.Capstone(state.cs.ARCH_X86, mode);
+        state.csMode = mode;
+      }
+      return state.disassembler;
+    }
+
+    function extractImports(pe) {
+      const names = [];
+      try {
+        if (typeof pe.getAllImports === 'function') {
+          const imps = pe.getAllImports() || [];
+          for (const imp of imps) {
+            if (typeof imp === 'string') {
+              names.push(imp);
+            } else if (imp?.name) {
+              names.push(imp.name);
+            } else if (Array.isArray(imp?.functions)) {
+              for (const fn of imp.functions) {
+                if (typeof fn === 'string') names.push(fn);
+                else if (fn?.name) names.push(fn.name);
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // Fallback to raw string scan if import directory is stripped/packed
+      }
+      return [...new Set(names)];
+    }
+
+    async function loadFile(file) {
+      state.fileName = file.name || 'binary';
+      state.patchedOffsets.clear();
+      state.patchedBuffer = null;
+      state.pseudoCode = '';
+      state.pe = null;
+
+      $('btn-download-c').disabled = true;
+      $('btn-download-bin').disabled = true;
+      $('decomp-output').textContent = '// Click "Generate Pseudo-C" after loading a binary.';
+      $('info-decomp-status').textContent = 'Idle';
+
+      log(`Reading ${file.name} (${(file.size / 1024).toFixed(2)} KB)...`, 'info');
+      const arrayBuf = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      state.rawBuffer = bytes;
+
+      try {
+        // Parse PE header with ignoreCert so Authenticode-signed binaries can still be inspected
+        const pe = PE.NtExecutable.from(arrayBuf, { ignoreCert: true });
+        state.pe = pe;
+
+        const opt = pe.newHeader?.optionalHeader;
+        const magic = opt ? Number(opt.magic) : 0;
+        state.is64Bit = magic === 0x20b;
+        const archStr = state.is64Bit ? 'x86_64 (PE32+)' : magic === 0x10b ? 'x86 (PE32)' : `Unknown (0x${magic.toString(16)})`;
+
+        const sections = typeof pe.getAllSections === 'function' ? (pe.getAllSections() || []) : [];
+        const sectionNames = sections
+          .map(s => (s?.info?.name || '').replace(/\0/g, '').trim())
+          .filter(Boolean);
+
+        const rawImageBase = opt?.imageBase;
+        const baseAddr = rawImageBase !== undefined
+          ? (typeof rawImageBase === 'bigint' ? Number(rawImageBase) : Number(rawImageBase))
+          : (state.is64Bit ? 0x140000000 : 0x400000);
+
+        const entryRva = opt ? Number(opt.addressOfEntryPoint || 0) : 0;
+
+        state.baseAddr = baseAddr;
+        state.entryRva = entryRva;
+
+        $('info-filename').textContent = file.name;
+        $('info-format').textContent = state.is64Bit ? 'PE32+ Executable' : 'PE32 Executable';
+        $('info-size').textContent = `${(file.size / 1024).toFixed(2)} KB`;
+        $('info-sections').textContent = sectionNames.length ? sectionNames.join(', ') : 'None';
+        $('info-arch').textContent = archStr;
+        $('info-base').textContent = '0x' + baseAddr.toString(16).toUpperCase();
+        $('info-entry').textContent = '0x' + (baseAddr + entryRva).toString(16).toUpperCase();
+
+        // Find section containing entry point (or first executable/readable section)
+        let entrySection = sections.find(s => {
+          const va = Number(s.info.virtualAddress);
+          const size = Math.max(Number(s.info.virtualSize || 0), Number(s.info.sizeOfRawData || 0));
+          return entryRva >= va && entryRva < va + size;
+        }) || sections[0];
+
+        if (!entrySection) {
+          throw new Error('No PE sections found in binary.');
+        }
+
+        const secVa = Number(entrySection.info.virtualAddress);
+        const secRawPtr = Number(entrySection.info.pointerToRawData);
+        const secRawSize = Number(entrySection.info.sizeOfRawData);
+        const delta = Math.max(0, entryRva - secVa);
+        const fileOffset = secRawPtr + delta;
+
+        if (fileOffset >= bytes.length) {
+          throw new Error(`Entry point file offset (0x${fileOffset.toString(16)}) is outside file bounds.`);
+        }
+
+        const available = Math.min(2048, Math.max(0, secRawSize - delta), bytes.length - fileOffset);
+        state.codeFileOffset = fileOffset;
+        state.codeBaseVa = baseAddr + entryRva;
+        state.codeBytes = bytes.slice(fileOffset, fileOffset + available);
+
+        const dis = await ensureCapstone(state.is64Bit);
+        log(`Disassembling ${available} bytes at VA 0x${state.codeBaseVa.toString(16).toUpperCase()}...`, 'info');
+        const instrs = dis.disasm(state.codeBytes, state.codeBaseVa);
+        state.instructions = Array.isArray(instrs) ? instrs : [];
+
+        const parsedImports = extractImports(pe);
+        analyzeAntiDebug(bytes, parsedImports, state.instructions, sections);
+
+        updateStructureTree(sectionNames, parsedImports, state.detectedChecks);
+        renderDisassembly();
+        renderHex(bytes);
+
+        $('btn-decompile').disabled = state.instructions.length === 0;
+        $('btn-antidebug').disabled = state.detectedChecks.length === 0;
+        $('info-decomp-status').textContent = state.instructions.length ? 'Ready' : 'No code';
+
+        dropzone.style.display = 'none';
+        $('disasm-output').style.display = 'block';
+        log(`Loaded ${file.name} (${state.instructions.length} instructions disassembled).`, 'success');
+      } catch (err) {
+        log(`PE Parse Error: ${err.message}`, 'error');
+        console.error(err);
+      }
+    }
+
+    function updateStructureTree(sections, imports, checks) {
+      const tree = $('file-tree');
+      const secHtml = sections.length
+        ? sections.map(n => `<div class="tree-item tree-sub">• ${escapeHtml(n)}</div>`).join('')
+        : `<div class="tree-item tree-sub">None</div>`;
+
+      const impSlice = imports.slice(0, 25);
+      const impHtml = impSlice.length
+        ? impSlice.map(n => `<div class="tree-item tree-sub">• ${escapeHtml(n)}</div>`).join('') +
+          (imports.length > 25 ? `<div class="tree-item tree-sub" style="color:var(--text-muted)">+${imports.length - 25} more</div>` : '')
+        : `<div class="tree-item tree-sub">None parsed</div>`;
+
+      const chkHtml = checks.length
+        ? checks.map(c => `<div class="tree-item tree-sub">• ${escapeHtml(c.name)} (${escapeHtml(c.source)})</div>`).join('')
+        : `<div class="tree-item tree-sub">None detected</div>`;
+
+      tree.innerHTML = `
+        <div class="tree-item tree-folder">📁 Sections (${sections.length})</div>
+        ${secHtml}
+        <div class="tree-item tree-folder">📁 Imports (${imports.length})</div>
+        ${impHtml}
+        <div class="tree-item tree-folder">📁 Anti-Debug Hits (${checks.length})</div>
+        ${chkHtml}
+      `;
+    }
+
+    function analyzeAntiDebug(bytes, imports, instructions, sections) {
+      const checks = [];
+      const addCheck = (name, source, fileOffset = null, size = 0) => {
+        checks.push({ name, source, fileOffset, size });
+      };
+
+      // 1. Imported APIs
+      for (const imp of imports) {
+        const match = ANTI_DEBUG_APIS.find(api => imp.toLowerCase().includes(api.toLowerCase()));
+        if (match) addCheck(match, 'IAT');
+      }
+
+      // 2. Raw ASCII string scan for API names (catches packed/partially-parsed binaries)
+      const ascii = new TextDecoder('latin1').decode(bytes);
+      for (const api of ANTI_DEBUG_APIS) {
+        if (ascii.includes(api) && !checks.some(c => c.name === api)) {
+          addCheck(api, 'String');
+        }
+      }
+
+      // 3. Disassembly pattern checks (PEB/TEB access, timing, software traps)
+      let relOffset = 0;
+      for (const instr of instructions) {
+        const m = (instr.mnemonic || '').toLowerCase();
+        const ops = (instr.op_str || '').toLowerCase();
+        const sz = Number(instr.size || 0);
+        const fileOff = state.codeFileOffset + relOffset;
+        relOffset += sz;
+
+        if ((m === 'mov' || m === 'lea' || m === 'cmp') && (ops.includes('gs:') || ops.includes('fs:'))) {
+          addCheck(`Segment read (${instr.mnemonic} ${instr.op_str})`, 'Code', fileOff, sz);
+        } else if (m === 'rdtsc' || m === 'rdtscp') {
+          addCheck(`Timing instruction (${m})`, 'Code', fileOff, sz);
+        } else if (m === 'int' && (ops.includes('0x2d') || ops.includes('2d') || ops.includes('1') || ops.includes('0x01'))) {
+          addCheck(`Interrupt check (int ${instr.op_str})`, 'Code', fileOff, sz);
+        } else if (m === 'icebp' || m === 'int1') {
+          addCheck(`Trap instruction (${m})`, 'Code', fileOff, sz);
+        }
+      }
+
+      state.detectedChecks = checks;
+      $('info-imports').textContent = imports.length ? `${imports.length} imported` : 'None / String-scanned';
+
+      const statusEl = $('info-antidebug');
+      if (checks.length > 0) {
+        statusEl.textContent = `Detected (${checks.length})`;
+        statusEl.style.color = '#b71c1c';
+        log(`Detected ${checks.length} anti-debug indicator(s):`, 'warning');
+        for (const c of checks.slice(0, 12)) {
+          log(`  - ${c.name} [${c.source}]`, 'warning');
+        }
+      } else {
+        statusEl.textContent = 'None Found';
+        statusEl.style.color = '#1b5e20';
+        log('No known anti-debug indicators found in scanned regions.', 'info');
+      }
+    }
+
+    function renderDisassembly() {
+      const activeBytes = state.patchedBuffer || state.rawBuffer;
+      let html = '';
+      let relOffset = 0;
+
+      for (const instr of state.instructions) {
+        const sz = Number(instr.size || 0);
+        const fileOff = state.codeFileOffset + relOffset;
+        const slice = activeBytes ? activeBytes.slice(fileOff, fileOff + sz) : new Uint8Array();
+        const isPatched = state.patchedOffsets.has(fileOff);
+        relOffset += sz;
+
+        const addrStr = '0x' + Number(instr.address).toString(16).toUpperCase().padStart(8, '0');
+        const byteHex = Array.from(slice).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+
+        let opEscaped = escapeHtml(instr.op_str || '');
+        opEscaped = opEscaped.replace(/\b(0x[0-9a-fA-F]+|\d+)\b/g, '<span class="number">$1</span>');
+        opEscaped = opEscaped.replace(
+          /\b(eax|ebx|ecx|edx|esi|edi|esp|ebp|r8d|r9d|r10d|r11d|r12d|r13d|r14d|r15d|rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp|r8|r9|r10|r11|r12|r13|r14|r15)\b/gi,
+          '<span class="register">$1</span>'
+        );
+
+        html += `<div class="line${isPatched ? ' patched-line' : ''}">
+          <span class="addr">${addrStr}</span>
+          <span class="bytes">${escapeHtml(byteHex.padEnd(28, ' '))}</span>
+          <span class="asm"><span class="mnemonic">${escapeHtml(instr.mnemonic)}</span> ${opEscaped}${isPatched ? '<span class="patch-tag">[PATCHED]</span>' : ''}</span>
+        </div>`;
+      }
+
+      $('disasm-output').innerHTML = html || '<div style="color:var(--text-muted)">No instructions decoded.</div>';
+    }
+
+    function renderHex(buffer) {
+      let html = '';
+      const limit = Math.min(buffer.length, 4096);
+      for (let i = 0; i < limit; i += 16) {
+        const addr = i.toString(16).toUpperCase().padStart(8, '0');
+        let bytesHtml = '';
+        let ascii = '';
+        for (let j = 0; j < 16 && i + j < limit; j++) {
+          const b = buffer[i + j];
+          const hex = b.toString(16).toUpperCase().padStart(2, '0');
+          bytesHtml += `<span class="hex-byte" title="Offset 0x${(i + j).toString(16).toUpperCase()}">${hex}</span>`;
+          ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+        }
+        html += `<div class="hex-row">
+          <span class="hex-addr">${addr}</span>
+          <span class="hex-data">${bytesHtml}</span>
+          <span class="hex-ascii">|${escapeHtml(ascii)}|</span>
+        </div>`;
+      }
+      if (buffer.length > limit) {
+        html += `<div style="color:var(--text-muted); margin-top:8px;">Showing first ${(limit / 1024).toFixed(0)} KB of ${(buffer.length / 1024).toFixed(1)} KB.</div>`;
+      }
+      $('hex-output').innerHTML = html;
+    }
+
+    // Generate pseudo-C from disassembled instructions
+    $('btn-decompile').addEventListener('click', () => {
+      if (!state.instructions.length) return;
+
+      log('Generating pseudo-C from disassembled instructions...', 'info');
+      let c = `// Pseudo-C generated by RE-Studio (instruction-level translation, not full AST decompilation)\n`;
+      c += `// File: ${state.fileName}\n`;
+      c += `// Base VA: 0x${state.codeBaseVa.toString(16).toUpperCase()}\n\n`;
+      c += `void entry_snippet(void) {\n`;
+
+      for (const instr of state.instructions) {
+        const m = (instr.mnemonic || '').toLowerCase();
+        const ops = (instr.op_str || '').trim();
+        const addr = '0x' + Number(instr.address).toString(16).toUpperCase();
+
+        if (m === 'mov' || m === 'movzx' || m === 'movsx' || m === 'lea') {
+          const parts = splitOperands(ops);
+          if (parts.length === 2) {
+            c += `  ${parts[0]} = ${parts[1]}; // ${addr}: ${m}\n`;
+          } else {
+            c += `  // ${addr}: ${m} ${ops}\n`;
+          }
+        } else if (['add', 'sub', 'xor', 'and', 'or', 'imul'].includes(m)) {
+          const parts = splitOperands(ops);
+          const symMap = { add: '+=', sub: '-=', xor: '^=', and: '&=', or: '|=', imul: '*=' };
+          if (parts.length === 2) {
+            c += `  ${parts[0]} ${symMap[m]} ${parts[1]}; // ${addr}: ${m}\n`;
+          } else {
+            c += `  // ${addr}: ${m} ${ops}\n`;
+          }
+        } else if (m === 'inc' || m === 'dec') {
+          c += `  ${ops}${m === 'inc' ? '++' : '--'}; // ${addr}\n`;
+        } else if (m === 'call') {
+          const target = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'indirect';
+          c += `  sub_${target}(); // ${addr}: call ${ops}\n`;
+        } else if (m === 'ret' || m === 'retn') {
+          c += `  return; // ${addr}\n`;
+        } else if (m.startsWith('j') && m !== 'jmp') {
+          const label = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'target';
+          c += `  if (cond_${m}) goto loc_${label}; // ${addr}: ${m} ${ops}\n`;
+        } else if (m === 'jmp') {
+          const label = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'target';
+          c += `  goto loc_${label}; // ${addr}: jmp ${ops}\n`;
+        } else {
+          c += `  // ${addr}: ${m} ${ops}\n`;
+        }
+      }
+
+      c += `}\n`;
+      state.pseudoCode = c;
+      $('decomp-output').textContent = c;
+      $('info-decomp-status').textContent = 'Generated';
+      $('btn-download-c').disabled = false;
+      switchTab('decomp');
+      log('Pseudo-C generated.', 'success');
+    });
+
+    // Patch only concrete code-level anti-debug instructions (e.g. rdtsc / int checks)
+    $('btn-antidebug').addEventListener('click', () => {
+      if (!state.rawBuffer) return;
+
+      const patchTargets = state.detectedChecks.filter(
+        c => c.source === 'Code' && typeof c.fileOffset === 'number' && c.size > 0
+      );
+
+      if (!patchTargets.length) {
+        log('No direct code-level anti-debug opcodes found in the scanned window (only import/string references were detected).', 'warning');
+        return;
+      }
+
+      const buf = state.patchedBuffer ? new Uint8Array(state.patchedBuffer) : new Uint8Array(state.rawBuffer);
+      let applied = 0;
+
+      for (const target of patchTargets) {
+        for (let i = 0; i < target.size; i++) {
+          const idx = target.fileOffset + i;
+          if (idx < buf.length) {
+            buf[idx] = 0x90; // NOP
+          }
+        }
+        state.patchedOffsets.add(target.fileOffset);
+        applied++;
+        log(`NOPed ${target.name} at file offset 0x${target.fileOffset.toString(16).toUpperCase()} (${target.size} bytes).`, 'success');
+      }
+
+      state.patchedBuffer = buf;
+      $('info-antidebug').textContent = `Patched (${state.patchedOffsets.size} sites)`;
+      $('info-antidebug').style.color = '#1b5e20';
+      $('btn-download-bin').disabled = false;
+
+      renderDisassembly();
+      renderHex(state.patchedBuffer);
+      log(`Applied ${applied} NOP patch(es). You can export the modified bytes via "Download Patched Binary".`, 'info');
+    });
+
+    $('btn-download-c').addEventListener('click', () => {
+      if (!state.pseudoCode) return;
+      triggerDownload(
+        new Blob([state.pseudoCode], { type: 'text/plain;charset=utf-8' }),
+        `${stripExt(state.fileName)}_pseudo.c`
+      );
+      log('Downloaded pseudo-C file.', 'info');
+    });
+
+    $('btn-download-bin').addEventListener('click', () => {
+      if (!state.patchedBuffer) return;
+      triggerDownload(
+        new Blob([state.patchedBuffer], { type: 'application/octet-stream' }),
+        `${stripExt(state.fileName)}_patched.bin`
+      );
+      log('Downloaded patched binary buffer.', 'info');
+    });
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function splitOperands(opStr) {
+      return opStr.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    function stripExt(name) {
+      return name.replace(/\.[^/.]+$/, '') || 'binary';
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('load', () => {
+      if (typeof MCapstone === 'undefined') {
+        log('Capstone.js failed to load. Check network/CDN access.', 'error');
+      } else {
+        log('Capstone.js script ready.', 'info');
+      }
+      log('PE parser ES module loaded.', 'info');
+    });
+  </script>
+</body>
+</html>
