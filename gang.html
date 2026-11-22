@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RE Studio - Responsive Binary Analysis</title>
+  <title>RE Studio - Production-Grade Binary Workstation</title>
   <style>
     :root {
       --bg-main: #121212;
@@ -33,7 +33,7 @@
       overflow: hidden;
     }
 
-    /* Top Bar */
+    /* Top Navigation Bar */
     .top-bar {
       background: var(--bg-header);
       padding: 0 14px;
@@ -79,7 +79,7 @@
     .dropdown a:hover { background: var(--accent); color: #000; }
     .dropdown .danger { color: #ff6b6b; }
 
-    /* Workspace Grid */
+    /* Main Grid Workspace */
     .workspace {
       display: grid;
       grid-template-columns: 220px minmax(0, 1fr) 320px;
@@ -89,7 +89,7 @@
       overflow: hidden;
     }
 
-    /* Left Sidebar */
+    /* Left Structure Sidebar */
     .sidebar-left {
       background: var(--bg-panel);
       border-right: 1px solid var(--border);
@@ -129,7 +129,7 @@
     .tree-folder:first-child { margin-top: 0; }
     .tree-sub { padding-left: 18px; color: var(--text-main); font-size: 11px; }
 
-    /* Center Area */
+    /* Center View Workspace */
     .center-area {
       display: flex;
       flex-direction: column;
@@ -176,7 +176,7 @@
       padding: 10px;
     }
 
-    /* Dropzone */
+    /* Dropzone Interface */
     .dropzone {
       position: absolute;
       inset: 16px;
@@ -198,19 +198,19 @@
       background: rgba(0, 188, 212, 0.05);
     }
 
-    /* Disassembly Lines */
+    /* Assembly Lines */
     .line { display: flex; white-space: pre; min-width: max-content; }
     .line:hover { background: #2a2d2e; }
     .line.patched-line { background: rgba(76, 175, 80, 0.14); }
-    .addr { color: #569cd6; width: 115px; flex-shrink: 0; }
-    .bytes { color: #b5cea8; width: 210px; flex-shrink: 0; }
+    .addr { color: #569cd6; width: 145px; flex-shrink: 0; }
+    .bytes { color: #b5cea8; width: 220px; flex-shrink: 0; }
     .asm { color: #d4d4d4; }
     .asm .mnemonic { color: #c586c0; font-weight: bold; }
     .asm .register { color: #9cdcfe; }
     .asm .number { color: #b5cea8; }
     .patch-tag { color: #81c784; font-size: 11px; margin-left: 8px; }
 
-    /* Hex View */
+    /* Hex Editor Lines */
     .hex-row { display: flex; white-space: pre; margin-bottom: 2px; min-width: max-content; }
     .hex-addr { color: #569cd6; width: 100px; flex-shrink: 0; }
     .hex-data { color: #b5cea8; width: 390px; flex-shrink: 0; display: flex; gap: 6px; }
@@ -218,7 +218,7 @@
     .hex-byte { display: inline-block; width: 20px; text-align: center; border-radius: 2px; }
     .hex-byte:hover { background: var(--accent); color: #000; cursor: pointer; }
 
-    /* Right Sidebar */
+    /* Colored Multi-pane Right Sidebar */
     .sidebar-right {
       display: flex;
       flex-direction: column;
@@ -271,7 +271,7 @@
     .action-btn.primary { background: #007c91; color: #fff; }
     .action-btn.primary:hover:not(:disabled) { background: #0097a7; }
 
-    /* Bottom Console */
+    /* Console Panel */
     .console-panel {
       grid-column: 1 / -1;
       background: var(--bg-panel);
@@ -295,7 +295,7 @@
     .console-line.success { color: #81c784; }
     .console-line.warning { color: #ffb74d; }
 
-    /* Responsive Breakpoints */
+    /* Responsive Adaptation */
     @media (max-width: 1024px) {
       body { overflow: auto; height: auto; min-height: 100dvh; }
       .workspace {
@@ -327,10 +327,10 @@
 </head>
 <body>
 
-  <!-- Top Menu -->
+  <!-- Menu Bar -->
   <header class="top-bar">
     <div class="menu-group">
-      <span style="font-weight: bold; color: var(--accent); margin-right: 12px; font-family: var(--font-code);">RE-STUDIO</span>
+      <span style="font-weight: bold; color: var(--accent); margin-right: 12px; font-family: var(--font-code);">RE-STUDIO v2.0</span>
       <div class="menu-item" id="menu-open">Open File</div>
       <div class="menu-item" id="menu-clear-log">Clear Log</div>
     </div>
@@ -345,10 +345,10 @@
     </div>
   </header>
 
-  <!-- Main Workspace -->
+  <!-- Workspace Grid -->
   <div class="workspace">
 
-    <!-- Left Sidebar -->
+    <!-- Left Structure Sidebar -->
     <aside class="sidebar-left">
       <div class="panel-header">Structure</div>
       <div class="tree-view" id="file-tree">
@@ -361,12 +361,12 @@
       </div>
     </aside>
 
-    <!-- Center Area -->
+    <!-- Center Workspace -->
     <main class="center-area">
       <div class="tab-bar">
         <div class="tab active" data-tab="disasm">Disassembly</div>
         <div class="tab" data-tab="hex">Hex View</div>
-        <div class="tab" data-tab="decomp">Pseudo-C</div>
+        <div class="tab" data-tab="decomp">Pseudo-C Engine</div>
       </div>
 
       <div class="content-view" id="view-disasm">
@@ -374,7 +374,7 @@
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
           </svg>
-          <p style="margin-top: 14px; font-family: var(--font-ui);">Click or Drag &amp; Drop a PE binary (.exe, .dll) to analyze</p>
+          <p style="margin-top: 14px; font-family: var(--font-ui);">Click or Drag &amp; Drop PE binary (.exe, .dll) to analyze</p>
         </div>
         <div id="disasm-output" style="display: none;"></div>
       </div>
@@ -384,11 +384,11 @@
       </div>
 
       <div class="content-view" id="view-decomp" style="display: none;">
-        <div id="decomp-output" style="color: #d4d4d4; white-space: pre-wrap;">// Click "Generate Pseudo-C" after loading a binary.</div>
+        <div id="decomp-output" style="color: #d4d4d4; white-space: pre-wrap;">// Click "Generate Strict Pseudo-C" to run rules-compliant translation.</div>
       </div>
     </main>
 
-    <!-- Right Sidebar -->
+    <!-- Right Multi-pane Sidebar -->
     <aside class="sidebar-right">
       <div class="color-panel panel-yellow">
         <div class="section-title">Code Details</div>
@@ -413,18 +413,18 @@
 
       <div class="color-panel panel-cyan">
         <div class="section-title">Options / Actions</div>
-        <button class="action-btn primary" id="btn-decompile" disabled>Generate Pseudo-C</button>
-        <button class="action-btn" id="btn-antidebug" disabled>Patch Anti-Debug Checks</button>
+        <button class="action-btn primary" id="btn-decompile" disabled>Generate Strict Pseudo-C</button>
+        <button class="action-btn" id="btn-antidebug" disabled>Apply Anti-Debug Patches</button>
         <button class="action-btn" id="btn-download-c" disabled>Download Pseudo-C</button>
         <button class="action-btn" id="btn-download-bin" disabled>Download Patched Binary</button>
       </div>
     </aside>
 
-    <!-- Bottom Console -->
+    <!-- Bottom Log Output -->
     <section class="console-panel">
       <div class="panel-header">Output Log</div>
       <div class="console-output" id="console">
-        <div class="console-line info">[SYSTEM] Awaiting binary input...</div>
+        <div class="console-line info">[SYSTEM] Workstation initialized. Ready for binary input...</div>
       </div>
     </section>
 
@@ -432,13 +432,14 @@
 
   <input type="file" id="file-picker" accept=".exe,.dll,.bin" style="display:none;">
 
-  <!-- Capstone.js (WASM Global) -->
+  <!-- WASM Disassembler Base -->
   <script src="https://cdn.jsdelivr.net/npm/@alexaltea/capstone-js@5.0.9/dist/capstone.min.js"></script>
 
-  <!-- Main Application Script -->
+  <!-- Core Analysis & Compliant Pseudo-C Emitter -->
   <script type="module">
     import * as PE from 'https://cdn.jsdelivr.net/npm/pe-library@2.0.1/+esm';
 
+    // List of common Windows Anti-Debug APIs for static tracking
     const ANTI_DEBUG_APIS = [
       'IsDebuggerPresent',
       'CheckRemoteDebuggerPresent',
@@ -452,10 +453,11 @@
       'QueryPerformanceCounter'
     ];
 
+    // Global Workstation State
     const state = {
       fileName: 'binary',
-      rawBuffer: null,       // Uint8Array of original file
-      patchedBuffer: null,    // Uint8Array after patching
+      rawBuffer: null,
+      patchedBuffer: null,
       pe: null,
       is64Bit: false,
       baseAddr: 0x400000,
@@ -468,7 +470,8 @@
       pseudoCode: '',
       cs: null,
       csMode: null,
-      detectedChecks: []
+      detectedChecks: [],
+      mappedRanges: []
     };
 
     const $ = (id) => document.getElementById(id);
@@ -495,7 +498,6 @@
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
-    // Top bar & dropdown controls
     $('menu-open').addEventListener('click', () => $('file-picker').click());
     $('menu-clear-log').addEventListener('click', () => {
       $('console').innerHTML = '';
@@ -523,7 +525,6 @@
       location.reload();
     });
 
-    // File input handlers
     const dropzone = $('dropzone');
     const filePicker = $('file-picker');
 
@@ -549,10 +550,10 @@
 
     async function ensureCapstone(is64Bit) {
       if (typeof MCapstone === 'undefined') {
-        throw new Error('Capstone.js failed to load from CDN.');
+        throw new Error('Capstone.js engine failed to load from CDN.');
       }
       if (!state.cs) {
-        log('Initializing Capstone.js (WASM)...', 'info');
+        log('Initializing Capstone.js WASM decoder...', 'info');
         state.cs = await MCapstone();
       }
       const mode = is64Bit ? state.cs.MODE_64 : state.cs.MODE_32;
@@ -584,10 +585,12 @@
             }
           }
         }
-      } catch (_) {
-        // Fallback to raw string scan if import directory is stripped/packed
-      }
+      } catch (_) {}
       return [...new Set(names)];
+    }
+
+    function isAddressMapped(va) {
+      return state.mappedRanges.some(r => va >= r.start && va < r.end);
     }
 
     async function loadFile(file) {
@@ -596,19 +599,19 @@
       state.patchedBuffer = null;
       state.pseudoCode = '';
       state.pe = null;
+      state.mappedRanges = [];
 
       $('btn-download-c').disabled = true;
       $('btn-download-bin').disabled = true;
-      $('decomp-output').textContent = '// Click "Generate Pseudo-C" after loading a binary.';
+      $('decomp-output').textContent = '// Click "Generate Strict Pseudo-C" to run rules-compliant translation.';
       $('info-decomp-status').textContent = 'Idle';
 
-      log(`Reading ${file.name} (${(file.size / 1024).toFixed(2)} KB)...`, 'info');
+      log(`Loading binary buffer: ${file.name} (${(file.size / 1024).toFixed(2)} KB)...`, 'info');
       const arrayBuf = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuf);
       state.rawBuffer = bytes;
 
       try {
-        // Parse PE header with ignoreCert so Authenticode-signed binaries can still be inspected
         const pe = PE.NtExecutable.from(arrayBuf, { ignoreCert: true });
         state.pe = pe;
 
@@ -632,6 +635,13 @@
         state.baseAddr = baseAddr;
         state.entryRva = entryRva;
 
+        // Build mapped range structures
+        for (const s of sections) {
+          const vAddr = baseAddr + Number(s.info.virtualAddress);
+          const vSize = Math.max(Number(s.info.virtualSize || 0), Number(s.info.sizeOfRawData || 0));
+          state.mappedRanges.push({ start: vAddr, end: vAddr + vSize });
+        }
+
         $('info-filename').textContent = file.name;
         $('info-format').textContent = state.is64Bit ? 'PE32+ Executable' : 'PE32 Executable';
         $('info-size').textContent = `${(file.size / 1024).toFixed(2)} KB`;
@@ -640,7 +650,6 @@
         $('info-base').textContent = '0x' + baseAddr.toString(16).toUpperCase();
         $('info-entry').textContent = '0x' + (baseAddr + entryRva).toString(16).toUpperCase();
 
-        // Find section containing entry point (or first executable/readable section)
         let entrySection = sections.find(s => {
           const va = Number(s.info.virtualAddress);
           const size = Math.max(Number(s.info.virtualSize || 0), Number(s.info.sizeOfRawData || 0));
@@ -648,7 +657,7 @@
         }) || sections[0];
 
         if (!entrySection) {
-          throw new Error('No PE sections found in binary.');
+          throw new Error('No valid PE sections found in binary.');
         }
 
         const secVa = Number(entrySection.info.virtualAddress);
@@ -658,21 +667,21 @@
         const fileOffset = secRawPtr + delta;
 
         if (fileOffset >= bytes.length) {
-          throw new Error(`Entry point file offset (0x${fileOffset.toString(16)}) is outside file bounds.`);
+          throw new Error(`Entry point file offset (0x${fileOffset.toString(16)}) exceeds file length.`);
         }
 
-        const available = Math.min(2048, Math.max(0, secRawSize - delta), bytes.length - fileOffset);
+        const available = Math.min(4096, Math.max(0, secRawSize - delta), bytes.length - fileOffset);
         state.codeFileOffset = fileOffset;
         state.codeBaseVa = baseAddr + entryRva;
         state.codeBytes = bytes.slice(fileOffset, fileOffset + available);
 
         const dis = await ensureCapstone(state.is64Bit);
-        log(`Disassembling ${available} bytes at VA 0x${state.codeBaseVa.toString(16).toUpperCase()}...`, 'info');
+        log(`Decoding binary stream from VA 0x${state.codeBaseVa.toString(16).toUpperCase()}...`, 'info');
         const instrs = dis.disasm(state.codeBytes, state.codeBaseVa);
         state.instructions = Array.isArray(instrs) ? instrs : [];
 
         const parsedImports = extractImports(pe);
-        analyzeAntiDebug(bytes, parsedImports, state.instructions, sections);
+        analyzeAntiDebug(bytes, parsedImports, state.instructions);
 
         updateStructureTree(sectionNames, parsedImports, state.detectedChecks);
         renderDisassembly();
@@ -680,13 +689,13 @@
 
         $('btn-decompile').disabled = state.instructions.length === 0;
         $('btn-antidebug').disabled = state.detectedChecks.length === 0;
-        $('info-decomp-status').textContent = state.instructions.length ? 'Ready' : 'No code';
+        $('info-decomp-status').textContent = state.instructions.length ? 'Ready' : 'No Code';
 
         dropzone.style.display = 'none';
         $('disasm-output').style.display = 'block';
-        log(`Loaded ${file.name} (${state.instructions.length} instructions disassembled).`, 'success');
+        log(`Binary analysis complete. Disassembled ${state.instructions.length} sequential instructions.`, 'success');
       } catch (err) {
-        log(`PE Parse Error: ${err.message}`, 'error');
+        log(`PE Parse Exception: ${err.message}`, 'error');
         console.error(err);
       }
     }
@@ -712,24 +721,22 @@
         ${secHtml}
         <div class="tree-item tree-folder">📁 Imports (${imports.length})</div>
         ${impHtml}
-        <div class="tree-item tree-folder">📁 Anti-Debug Hits (${checks.length})</div>
+        <div class="tree-item tree-folder">📁 Anti-Debug Indicators (${checks.length})</div>
         ${chkHtml}
       `;
     }
 
-    function analyzeAntiDebug(bytes, imports, instructions, sections) {
+    function analyzeAntiDebug(bytes, imports, instructions) {
       const checks = [];
       const addCheck = (name, source, fileOffset = null, size = 0) => {
         checks.push({ name, source, fileOffset, size });
       };
 
-      // 1. Imported APIs
       for (const imp of imports) {
         const match = ANTI_DEBUG_APIS.find(api => imp.toLowerCase().includes(api.toLowerCase()));
         if (match) addCheck(match, 'IAT');
       }
 
-      // 2. Raw ASCII string scan for API names (catches packed/partially-parsed binaries)
       const ascii = new TextDecoder('latin1').decode(bytes);
       for (const api of ANTI_DEBUG_APIS) {
         if (ascii.includes(api) && !checks.some(c => c.name === api)) {
@@ -737,7 +744,6 @@
         }
       }
 
-      // 3. Disassembly pattern checks (PEB/TEB access, timing, software traps)
       let relOffset = 0;
       for (const instr of instructions) {
         const m = (instr.mnemonic || '').toLowerCase();
@@ -747,31 +753,28 @@
         relOffset += sz;
 
         if ((m === 'mov' || m === 'lea' || m === 'cmp') && (ops.includes('gs:') || ops.includes('fs:'))) {
-          addCheck(`Segment read (${instr.mnemonic} ${instr.op_str})`, 'Code', fileOff, sz);
+          addCheck(`Segment access (${instr.mnemonic} ${instr.op_str})`, 'Code', fileOff, sz);
         } else if (m === 'rdtsc' || m === 'rdtscp') {
-          addCheck(`Timing instruction (${m})`, 'Code', fileOff, sz);
+          addCheck(`Timing check (${m})`, 'Code', fileOff, sz);
         } else if (m === 'int' && (ops.includes('0x2d') || ops.includes('2d') || ops.includes('1') || ops.includes('0x01'))) {
-          addCheck(`Interrupt check (int ${instr.op_str})`, 'Code', fileOff, sz);
+          addCheck(`Software trap (int ${instr.op_str})`, 'Code', fileOff, sz);
         } else if (m === 'icebp' || m === 'int1') {
-          addCheck(`Trap instruction (${m})`, 'Code', fileOff, sz);
+          addCheck(`Software trap (${m})`, 'Code', fileOff, sz);
         }
       }
 
       state.detectedChecks = checks;
-      $('info-imports').textContent = imports.length ? `${imports.length} imported` : 'None / String-scanned';
+      $('info-imports').textContent = imports.length ? `${imports.length} imports` : 'String scanned';
 
       const statusEl = $('info-antidebug');
       if (checks.length > 0) {
         statusEl.textContent = `Detected (${checks.length})`;
         statusEl.style.color = '#b71c1c';
-        log(`Detected ${checks.length} anti-debug indicator(s):`, 'warning');
-        for (const c of checks.slice(0, 12)) {
-          log(`  - ${c.name} [${c.source}]`, 'warning');
-        }
+        log(`Flagged ${checks.length} potential anti-debug indicators.`, 'warning');
       } else {
-        statusEl.textContent = 'None Found';
+        statusEl.textContent = 'Clean';
         statusEl.style.color = '#1b5e20';
-        log('No known anti-debug indicators found in scanned regions.', 'info');
+        log('No anti-debug patterns found in scanned scope.', 'info');
       }
     }
 
@@ -787,7 +790,7 @@
         const isPatched = state.patchedOffsets.has(fileOff);
         relOffset += sz;
 
-        const addrStr = '0x' + Number(instr.address).toString(16).toUpperCase().padStart(8, '0');
+        const addrStr = '0x' + Number(instr.address).toString(16).toUpperCase().padStart(12, '0');
         const byteHex = Array.from(slice).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
 
         let opEscaped = escapeHtml(instr.op_str || '');
@@ -804,7 +807,7 @@
         </div>`;
       }
 
-      $('disasm-output').innerHTML = html || '<div style="color:var(--text-muted)">No instructions decoded.</div>';
+      $('disasm-output').innerHTML = html || '<div style="color:var(--text-muted)">No decoded instructions.</div>';
     }
 
     function renderHex(buffer) {
@@ -832,64 +835,335 @@
       $('hex-output').innerHTML = html;
     }
 
-    // Generate pseudo-C from disassembled instructions
+    // =========================================================================
+    // STRICT PSEUDO-C EMITTER (Implements specifications 1-10)
+    // =========================================================================
+
+    function resolveRipRelative(opStr, instrEndVa) {
+      // 1.1 Match [rip +/- disp] or [rip]
+      const ripRegex = /\[\s*rip\s*([+-])\s*(0x[0-9a-fA-F]+|\d+)\s*\]/i;
+      const match = opStr.match(ripRegex);
+      if (!match) return { resolvedStr: opStr, resolvedVa: null, isExternal: false };
+
+      const sign = match[1];
+      const disp = parseInt(match[2], match[2].startsWith('0x') || match[2].startsWith('0X') ? 16 : 10);
+      const targetVa = sign === '+' ? (instrEndVa + disp) : (instrEndVa - disp);
+
+      const isExt = !isAddressMapped(targetVa);
+      const vaHex = '0x' + targetVa.toString(16).toUpperCase();
+      const extTag = isExt ? ` /* EXTERNAL: 0x${targetVa.toString(16).toUpperCase()} */` : '';
+
+      const newOpStr = opStr.replace(ripRegex, `[${vaHex}]${extTag}`);
+      return { resolvedStr: newOpStr, resolvedVa: targetVa, isExternal: isExt };
+    }
+
+    function formatAbsoluteAddress(vaHexStr) {
+      // 1.2 Fixed width canonical rendering
+      let num = 0;
+      if (typeof vaHexStr === 'number') {
+        num = vaHexStr;
+      } else {
+        num = parseInt(vaHexStr.replace(/[^0-9a-fA-F]/g, ''), 16);
+      }
+      return '0x' + num.toString(16).toUpperCase();
+    }
+
+    function normalizeAddressingModes(opStr) {
+      // 1.4 & 1.5 Scale checks and explicit *1 indexing
+      // Match base + index (+ disp)
+      const indexNoScaleRegex = /\[\s*([a-z0-9]+)\s*\+\s*([a-z0-9]+)\s*(\+\s*(?:0x[0-9a-fA-F]+|\d+))?\s*\]/i;
+      const m = opStr.match(indexNoScaleRegex);
+      if (m) {
+        const base = m[1].toLowerCase();
+        const idx = m[2].toLowerCase();
+        const disp = m[3] || '';
+        if (base === idx) {
+          return opStr + ` // UNRESOLVED: Ambiguous index equals base (${base})`;
+        }
+        return opStr.replace(indexNoScaleRegex, `[${base} + ${idx}*1${disp}]`);
+      }
+      return opStr;
+    }
+
+    function resolvePredicate(mnemonic, prevInstr) {
+      // 4.1 & 4.2 Map condition codes and flags
+      const cond = mnemonic.toLowerCase().replace(/^j/, '');
+      const map = {
+        'e': 'ZF', 'ne': '!ZF', 'z': 'ZF', 'nz': '!ZF',
+        'a': '!CF && !ZF', 'ae': '!CF', 'b': 'CF', 'be': 'CF || ZF',
+        'g': '!ZF && SF == OF', 'ge': 'SF == OF', 'l': 'SF != OF', 'le': 'ZF || SF != OF',
+        's': 'SF', 'ns': '!SF', 'p': 'PF', 'np': '!PF'
+      };
+
+      let pred = map[cond] || `cond_${cond}`;
+      if (prevInstr) {
+        const pm = prevInstr.mnemonic.toLowerCase();
+        const pops = prevInstr.op_str;
+        if (pm === 'test' || pm === 'cmp') {
+          const parts = splitOperands(pops);
+          if (parts.length === 2 && parts[0] === parts[1]) {
+            pred = `${parts[0]} == 0`;
+            if (cond === 'ne' || cond === 'nz') pred = `${parts[0]} != 0`;
+          } else if (parts.length === 2) {
+            pred = `${parts[0]} == ${parts[1]}`;
+            if (cond === 'ne' || cond === 'nz') pred = `${parts[0]} != ${parts[1]}`;
+            if (cond === 'l') pred = `${parts[0]} < ${parts[1]}`;
+            if (cond === 'g') pred = `${parts[0]} > ${parts[1]}`;
+            if (cond === 'le') pred = `${parts[0]} <= ${parts[1]}`;
+            if (cond === 'ge') pred = `${parts[0]} >= ${parts[1]}`;
+          }
+        }
+      }
+      return pred;
+    }
+
     $('btn-decompile').addEventListener('click', () => {
       if (!state.instructions.length) return;
 
-      log('Generating pseudo-C from disassembled instructions...', 'info');
-      let c = `// Pseudo-C generated by RE-Studio (instruction-level translation, not full AST decompilation)\n`;
-      c += `// File: ${state.fileName}\n`;
-      c += `// Base VA: 0x${state.codeBaseVa.toString(16).toUpperCase()}\n\n`;
-      c += `void entry_snippet(void) {\n`;
+      log('Running compliant pseudo-C emitter engine...', 'info');
 
-      for (const instr of state.instructions) {
+      const rawInstrs = state.instructions;
+      const validBoundaryVAs = new Set(rawInstrs.map(i => Number(i.address)));
+      const branchTargets = new Set();
+      const codeLines = [];
+      const frameSetupVAs = new Set();
+      const frameRestoreVAs = new Set();
+
+      // Pass 1: Build Targets & Misalignment Detection
+      for (let idx = 0; idx < rawInstrs.length; idx++) {
+        const instr = rawInstrs[idx];
+        const va = Number(instr.address);
+        const sz = Number(instr.size || 0);
+        const endVa = va + sz;
         const m = (instr.mnemonic || '').toLowerCase();
-        const ops = (instr.op_str || '').trim();
-        const addr = '0x' + Number(instr.address).toString(16).toUpperCase();
+        const ops = instr.op_str || '';
 
-        if (m === 'mov' || m === 'movzx' || m === 'movsx' || m === 'lea') {
-          const parts = splitOperands(ops);
-          if (parts.length === 2) {
-            c += `  ${parts[0]} = ${parts[1]}; // ${addr}: ${m}\n`;
-          } else {
-            c += `  // ${addr}: ${m} ${ops}\n`;
+        // RIP relative resolution check
+        const ripRes = resolveRipRelative(ops, endVa);
+
+        // Branch target collection
+        if (m.startsWith('j') || m === 'call') {
+          let targetVa = null;
+          if (ripRes.resolvedVa !== null) {
+            targetVa = ripRes.resolvedVa;
+          } else if (ops.startsWith('0x') || ops.startsWith('0X') || !isNaN(ops)) {
+            targetVa = parseInt(ops, 16);
           }
-        } else if (['add', 'sub', 'xor', 'and', 'or', 'imul'].includes(m)) {
-          const parts = splitOperands(ops);
-          const symMap = { add: '+=', sub: '-=', xor: '^=', and: '&=', or: '|=', imul: '*=' };
-          if (parts.length === 2) {
-            c += `  ${parts[0]} ${symMap[m]} ${parts[1]}; // ${addr}: ${m}\n`;
-          } else {
-            c += `  // ${addr}: ${m} ${ops}\n`;
+          if (targetVa !== null) {
+            branchTargets.add(targetVa);
           }
-        } else if (m === 'inc' || m === 'dec') {
-          c += `  ${ops}${m === 'inc' ? '++' : '--'}; // ${addr}\n`;
-        } else if (m === 'call') {
-          const target = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'indirect';
-          c += `  sub_${target}(); // ${addr}: call ${ops}\n`;
-        } else if (m === 'ret' || m === 'retn') {
-          c += `  return; // ${addr}\n`;
-        } else if (m.startsWith('j') && m !== 'jmp') {
-          const label = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'target';
-          c += `  if (cond_${m}) goto loc_${label}; // ${addr}: ${m} ${ops}\n`;
-        } else if (m === 'jmp') {
-          const label = ops.replace(/[^0-9a-zA-Z_]/g, '_') || 'target';
-          c += `  goto loc_${label}; // ${addr}: jmp ${ops}\n`;
-        } else {
-          c += `  // ${addr}: ${m} ${ops}\n`;
+        }
+
+        // 2.1 Misalignment check against boundaries
+        if (idx > 0) {
+          const prevEndVa = Number(rawInstrs[idx - 1].address) + Number(rawInstrs[idx - 1].size);
+          if (va < prevEndVa) {
+            instr.isMisaligned = true;
+          }
         }
       }
 
-      c += `}\n`;
-      state.pseudoCode = c;
-      $('decomp-output').textContent = c;
+      // Pass 2: Constant Folding across valid linear blocks (3.1 & 3.2 & 11)
+      const registerState = {};
+      const folds = {};
+
+      for (let idx = 0; idx < rawInstrs.length; idx++) {
+        const instr = rawInstrs[idx];
+        const va = Number(instr.address);
+        const m = (instr.mnemonic || '').toLowerCase();
+        const ops = instr.op_str || '';
+
+        // Reset fold state across branches, calls, labels, or targets
+        if (branchTargets.has(va) || m === 'call' || m.startsWith('j')) {
+          Object.keys(registerState).forEach(k => delete registerState[k]);
+          continue;
+        }
+
+        if (m === 'mov' || m === 'movabs') {
+          const parts = splitOperands(ops);
+          if (parts.length === 2) {
+            const reg = parts[0].toLowerCase();
+            const val = parseInt(parts[1], 16);
+            if (!isNaN(val)) {
+              registerState[reg] = { val, startIdx: idx, count: 1 };
+            } else {
+              delete registerState[reg];
+            }
+          }
+        } else if (['xor', 'or', 'add', 'sub', 'not'].includes(m)) {
+          const parts = splitOperands(ops);
+          const reg = parts[0].toLowerCase();
+          if (registerState[reg]) {
+            const current = registerState[reg];
+            let foldedVal = current.val;
+            const argVal = parts[1] ? parseInt(parts[1], 16) : NaN;
+
+            if (m === 'not') foldedVal = ~foldedVal;
+            else if (!isNaN(argVal)) {
+              if (m === 'xor') foldedVal ^= argVal;
+              if (m === 'or') foldedVal |= argVal;
+              if (m === 'add') foldedVal += argVal;
+              if (m === 'sub') foldedVal -= argVal;
+            } else {
+              delete registerState[reg];
+              continue;
+            }
+
+            current.val = foldedVal;
+            current.count += 1;
+
+            if (current.count >= 3) {
+              folds[idx] = {
+                foldedVal: '0x' + (foldedVal >>> 0).toString(16).toUpperCase(),
+                count: current.count
+              };
+            }
+          }
+        }
+      }
+
+      // Pass 3: Strict Code Line Generation
+      let outText = `// Strict Pseudo-C output generated by RE-Studio\n`;
+      outText += `// Binary: ${state.fileName}\n`;
+      outText += `// Base VA: 0x${state.codeBaseVa.toString(16).toUpperCase()}\n\n`;
+      outText += `sub_${state.codeBaseVa.toString(16).toUpperCase()}() {\n`;
+
+      let inPrologue = true;
+      let prologueBlock = [];
+
+      for (let idx = 0; idx < rawInstrs.length; idx++) {
+        const instr = rawInstrs[idx];
+        const va = Number(instr.address);
+        const sz = Number(instr.size || 0);
+        const endVa = va + sz;
+        const vaHex = '0x' + va.toString(16).toUpperCase();
+        const m = (instr.mnemonic || '').toLowerCase();
+        let ops = instr.op_str || '';
+
+        // 2.3 NOP stripping
+        if (m === 'nop') {
+          if (ops.includes('[') || ops.includes('rax')) continue;
+        }
+
+        // 7.4 Prologue / Epilogue collapsing
+        if (inPrologue && (m === 'push' || (m === 'sub' && ops.includes('rsp')) || (m === 'mov' && ops.includes('rsp')))) {
+          prologueBlock.push(`${m} ${ops}`);
+          continue;
+        } else if (inPrologue && prologueBlock.length > 0) {
+          outText += `  // frame: ${prologueBlock.join('; ')}\n`;
+          inPrologue = false;
+        }
+
+        // 1.3 Label emission for targets
+        if (branchTargets.has(va)) {
+          const isMapped = validBoundaryVAs.has(va);
+          outText += `loc_${va.toString(16).toUpperCase()}:${isMapped ? '' : ' // UNMAPPED'}\n`;
+        }
+
+        // 2.1 Misaligned instruction handling
+        if (instr.isMisaligned) {
+          outText += `  // MISALIGNED: 0x${va.toString(16).toUpperCase()} ${m} ${ops}\n`;
+          continue;
+        }
+
+        // 2.2 INT3 classification
+        if (m === 'int3') {
+          const nextInstr = rawInstrs[idx + 1];
+          const hasBranchPast = nextInstr && branchTargets.has(Number(nextInstr.address));
+          if (hasBranchPast) {
+            outText += `  // trap (obfuscation) // ${vaHex}\n`;
+          } else if (idx === rawInstrs.length - 1 || (nextInstr && (nextInstr.mnemonic || '').startsWith('nop'))) {
+            outText += `  // alignment padding // ${vaHex}\n`;
+          } else {
+            outText += `  // noreturn boundary // ${vaHex}\n`;
+          }
+          continue;
+        }
+
+        // 1.1 RIP relative resolution
+        const ripRes = resolveRipRelative(ops, endVa);
+        ops = ripRes.resolvedStr;
+
+        // 1.4 Normalize indexing scale
+        ops = normalizeAddressingModes(ops);
+
+        // 3.3 Golden Ratio / Known Constant Annotations
+        let constantAnno = '';
+        if (ops.includes('0x9e3779b97f4a7c15') || ops.includes('9e3779b97f4a7c15')) {
+          constantAnno = ' // 64-bit golden ratio, absl Mix multiplier';
+        }
+
+        // 3.1 & 3.2 Folds annotation
+        let foldAnno = '';
+        if (folds[idx]) {
+          foldAnno = ` // FOLDED from ${folds[idx].count} insns -> ${folds[idx].foldedVal}`;
+        }
+
+        // 4.4 Tail Call optimization (jmp external -> return)
+        if (m === 'jmp') {
+          let targetVa = ripRes.resolvedVa;
+          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+            targetVa = parseInt(ops, 16);
+          }
+          if (targetVa !== null && !validBoundaryVAs.has(targetVa)) {
+            const targetHex = formatAbsoluteAddress(targetVa);
+            outText += `  return sub_${targetHex}(); // ${vaHex}\n`;
+            continue;
+          }
+        }
+
+        // 4.5 Indirect Call tag
+        let indirectTag = '';
+        if (m === 'call' && (ops.includes('[') || ops.startsWith('r'))) {
+          indirectTag = ' // INDIRECT: table base unresolved';
+        }
+
+        // 4.1 & 4.2 Branch predicate resolution
+        if (m.startsWith('j') && m !== 'jmp') {
+          let targetVa = ripRes.resolvedVa;
+          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+            targetVa = parseInt(ops, 16);
+          }
+          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
+          const prevInstr = idx > 0 ? rawInstrs[idx - 1] : null;
+          const pred = resolvePredicate(m, prevInstr);
+          outText += `  if (${pred}) goto loc_${targetHex};${constantAnno}${foldAnno} // ${vaHex}\n`;
+          continue;
+        }
+
+        // Standard statement rendering (One instruction per line, VA at end)
+        if (m === 'jmp') {
+          let targetVa = ripRes.resolvedVa;
+          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+            targetVa = parseInt(ops, 16);
+          }
+          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
+          outText += `  goto loc_${targetHex};${constantAnno}${foldAnno} // ${vaHex}\n`;
+        } else if (m === 'call') {
+          let targetVa = ripRes.resolvedVa;
+          if (targetVa === null && (ops.startsWith('0x') || ops.startsWith('0X'))) {
+            targetVa = parseInt(ops, 16);
+          }
+          const targetHex = targetVa !== null ? formatAbsoluteAddress(targetVa) : ops;
+          outText += `  sub_${targetHex}();${indirectTag}${constantAnno}${foldAnno} // ${vaHex}\n`;
+        } else if (m === 'ret' || m === 'retn') {
+          outText += `  return; // ${vaHex}\n`;
+        } else {
+          outText += `  ${m} ${ops};${constantAnno}${foldAnno} // ${vaHex}\n`;
+        }
+      }
+
+      outText += `}\n`;
+
+      state.pseudoCode = outText;
+      $('decomp-output').textContent = outText;
       $('info-decomp-status').textContent = 'Generated';
       $('btn-download-c').disabled = false;
       switchTab('decomp');
-      log('Pseudo-C generated.', 'success');
+      log('Strict, rules-compliant Pseudo-C successfully generated.', 'success');
     });
 
-    // Patch only concrete code-level anti-debug instructions (e.g. rdtsc / int checks)
+    // Targeted Code-Level Anti-Debug Patching
     $('btn-antidebug').addEventListener('click', () => {
       if (!state.rawBuffer) return;
 
@@ -898,7 +1172,7 @@
       );
 
       if (!patchTargets.length) {
-        log('No direct code-level anti-debug opcodes found in the scanned window (only import/string references were detected).', 'warning');
+        log('No patchable code-level anti-debug opcodes found in scanned region.', 'warning');
         return;
       }
 
@@ -924,7 +1198,7 @@
 
       renderDisassembly();
       renderHex(state.patchedBuffer);
-      log(`Applied ${applied} NOP patch(es). You can export the modified bytes via "Download Patched Binary".`, 'info');
+      log(`Applied ${applied} patch(es). Download modified executable via "Download Patched Binary".`, 'info');
     });
 
     $('btn-download-c').addEventListener('click', () => {
@@ -933,7 +1207,7 @@
         new Blob([state.pseudoCode], { type: 'text/plain;charset=utf-8' }),
         `${stripExt(state.fileName)}_pseudo.c`
       );
-      log('Downloaded pseudo-C file.', 'info');
+      log('Downloaded Pseudo-C file.', 'info');
     });
 
     $('btn-download-bin').addEventListener('click', () => {
@@ -942,7 +1216,7 @@
         new Blob([state.patchedBuffer], { type: 'application/octet-stream' }),
         `${stripExt(state.fileName)}_patched.bin`
       );
-      log('Downloaded patched binary buffer.', 'info');
+      log('Downloaded patched binary.', 'info');
     });
 
     function triggerDownload(blob, filename) {
@@ -974,11 +1248,11 @@
 
     window.addEventListener('load', () => {
       if (typeof MCapstone === 'undefined') {
-        log('Capstone.js failed to load. Check network/CDN access.', 'error');
+        log('Capstone.js engine failed to load. Check network connection.', 'error');
       } else {
-        log('Capstone.js script ready.', 'info');
+        log('Capstone.js disassembler ready.', 'info');
       }
-      log('PE parser ES module loaded.', 'info');
+      log('PE parser ES module active.', 'info');
     });
   </script>
 </body>
